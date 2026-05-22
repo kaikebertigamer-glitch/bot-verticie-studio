@@ -1,0 +1,15 @@
+# Sensitive — NEVER commitar
+credentials.json
+token.json
+
+# Banco de dados local
+*.db
+*.sqlite
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.env

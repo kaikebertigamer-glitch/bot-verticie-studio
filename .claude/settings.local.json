@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem \"C:\\\\Program Files\\\\nodejs\\\\\" -ErrorAction SilentlyContinue | Select-Object Name; Get-ChildItem \"$env:APPDATA\\\\npm\" -ErrorAction SilentlyContinue | Select-Object -First 5 Name; Get-ChildItem \"$env:ProgramFiles\\\\nodejs\\\\npm.cmd\" -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-ChildItem -Recurse \"c:\\\\Users\\\\kaike\\\\Downloads\\\\aprendendo\" | Where-Object { !$_.PSIsContainer } | Select-Object FullName | ForEach-Object { $_.FullName.Replace\\(\"c:\\\\Users\\\\kaike\\\\Downloads\\\\aprendendo\\\\\",\"\"\\) })",
+      "Skill(claude-api)",
+      "Skill(claude-api:*)",
+      "PowerShell(\\(Get-Command python -ErrorAction SilentlyContinue\\).Source; \\(Get-Command python3 -ErrorAction SilentlyContinue\\).Source; \\(Get-Command py -ErrorAction SilentlyContinue\\).Source)",
+      "PowerShell(python --version 2>&1)",
+      "PowerShell(Get-ChildItem \"c:\\\\Users\\\\kaike\\\\Downloads\\\\aprendendo\\\\fintech\" -Recurse | Where-Object { !$_.PSIsContainer } | Select-Object FullName, @{N='KB';E={[math]::Round\\($_.Length/1KB,1\\)}})",
+      "PowerShell(\\(Get-Command node -ErrorAction SilentlyContinue\\).Source; node --version 2>&1)",
+      "PowerShell(Start-Process -FilePath \"cmd.exe\" -ArgumentList \"/c cd /d `\"c:\\\\Users\\\\kaike\\\\Downloads\\\\aprendendo`\" && npm run dev\" -WindowStyle Normal)",
+      "PowerShell(\\(Get-Command git -ErrorAction SilentlyContinue\\).Source)",
+      "PowerShell(\\(Get-Command gh -ErrorAction SilentlyContinue\\).Source)"
+    ]
+  }
+}

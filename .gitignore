@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+*.local
+fintech/__pycache__/
+fintech/*.db
+fintech/token.json
+fintech/credentials.json

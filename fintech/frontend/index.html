@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Finanças Empresariais</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: { fontFamily: { sans: ['Inter', 'sans-serif'] } }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Inter', sans-serif; background: #0f172a; color: #f1f5f9; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #1e293b; }
+    ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+    .fade-in { animation: fadeIn .25s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    .modal-open { overflow: hidden; }
+    input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cursor: pointer; }
+  </style>
+</head>
+<body>
+
+<!-- ── Navbar ────────────────────────────────────────────────────────────── -->
+<nav class="bg-slate-800/90 backdrop-blur-sm border-b border-slate-700 sticky top-0 z-30">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+    <div class="flex items-center gap-3 flex-shrink-0">
+      <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/30">
+        <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </div>
+      <span class="font-semibold text-base sm:text-lg tracking-tight">Finanças Empresariais</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2 text-sm">
+        <span id="authDot" class="w-2 h-2 rounded-full bg-slate-600 flex-shrink-0"></span>
+        <span id="authLabel" class="text-slate-400 hidden sm:inline">Verificando...</span>
+      </div>
+      <button id="btnConnectGoogle" onclick="connectGoogle()" class="hidden items-center gap-2 bg-white text-slate-900 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-slate-100 transition shadow">
+        <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+        </svg>
+        Conectar Google
+      </button>
+      <span id="googleConnectedBadge" class="hidden items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-2.5 py-1 rounded-full">
+        <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>
+        Google Agenda
+      </span>
+    </div>
+  </div>
+</nav>
+
+<!-- ── Main ──────────────────────────────────────────────────────────────── -->
+<main class="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+
+  <!-- Page header -->
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+    <div>
+      <h1 class="text-xl sm:text-2xl font-bold">Dashboard Financeiro</h1>
+      <p id="currentMonth" class="text-slate-400 text-sm mt-0.5"></p>
+    </div>
+    <button onclick="openModal()"
+      class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold px-4 py-2.5 rounded-xl transition shadow-lg shadow-blue-500/20 text-sm">
+      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+      Nova Transação
+    </button>
+  </div>
+
+  <!-- ── Stats cards ─────────────────────────────────────────────────────── -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+
+    <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700 fade-in">
+      <div class="flex items-start justify-between mb-3">
+        <p class="text-slate-400 text-xs font-medium leading-tight">Saldo do<br>Mês Atual</p>
+        <div class="w-8 h-8 bg-blue-500/10 rounded-lg flex items-center justify-center flex-shrink-0">
+          <svg class="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"/></svg>
+        </div>
+      </div>
+      <p id="statBalance" class="text-2xl font-bold text-blue-400">R$ 0,00</p>
+      <p class="text-slate-500 text-xs mt-1">Receitas − Despesas pagas</p>
+    </div>
+
+    <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700 fade-in">
+      <div class="flex items-start justify-between mb-3">
+        <p class="text-slate-400 text-xs font-medium leading-tight">Receitas<br>do Mês</p>
+        <div class="w-8 h-8 bg-emerald-500/10 rounded-lg flex items-center justify-center flex-shrink-0">
+          <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M7 11l5-5m0 0l5 5m-5-5v12"/></svg>
+        </div>
+      </div>
+      <p id="statIncome" class="text-2xl font-bold text-emerald-400">R$ 0,00</p>
+      <p class="text-slate-500 text-xs mt-1">Somente status "Pago"</p>
+    </div>
+
+    <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700 fade-in">
+      <div class="flex items-start justify-between mb-3">
+        <p class="text-slate-400 text-xs font-medium leading-tight">Despesas<br>do Mês</p>
+        <div class="w-8 h-8 bg-red-500/10 rounded-lg flex items-center justify-center flex-shrink-0">
+          <svg class="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M17 13l-5 5m0 0l-5-5m5 5V6"/></svg>
+        </div>
+      </div>
+      <p id="statExpenses" class="text-2xl font-bold text-red-400">R$ 0,00</p>
+      <p class="text-slate-500 text-xs mt-1">Somente status "Pago"</p>
+    </div>
+
+    <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700 fade-in">
+      <div class="flex items-start justify-between mb-3">
+        <p class="text-slate-400 text-xs font-medium leading-tight">A Pagar<br>Pendente</p>
+        <div class="w-8 h-8 bg-amber-500/10 rounded-lg flex items-center justify-center flex-shrink-0">
+          <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+      </div>
+      <p id="statPending" class="text-2xl font-bold text-amber-400">R$ 0,00</p>
+      <p id="statOverdue" class="text-xs mt-1 text-slate-500">0 atrasadas</p>
+    </div>
+  </div>
+
+  <!-- ── Chart + sidebar ─────────────────────────────────────────────────── -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+
+    <div class="lg:col-span-2 bg-slate-800 rounded-2xl p-5 border border-slate-700 fade-in">
+      <div class="flex items-center justify-between mb-5">
+        <h2 class="font-semibold text-sm">Fluxo de Caixa — Últimos 6 Meses</h2>
+        <span class="text-slate-500 text-xs">Transações pagas</span>
+      </div>
+      <div class="h-52 relative">
+        <canvas id="cashflowChart"></canvas>
+      </div>
+    </div>
+
+    <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700 fade-in">
+      <h2 class="font-semibold text-sm mb-4">Resumo</h2>
+      <div class="space-y-0 divide-y divide-slate-700/60">
+        <div class="flex items-center justify-between py-3">
+          <span class="text-slate-400 text-xs">Lançamentos (mês)</span>
+          <span id="summaryCount" class="text-sm font-semibold">0</span>
+        </div>
+        <div class="flex items-center justify-between py-3">
+          <span class="text-slate-400 text-xs">Receitas a receber</span>
+          <span id="summaryIncomePending" class="text-emerald-400 text-xs font-medium">R$ 0,00</span>
+        </div>
+        <div class="flex items-center justify-between py-3">
+          <span class="text-slate-400 text-xs">Itens em atraso</span>
+          <span id="summaryOverdueCount" class="text-red-400 text-xs font-semibold">0 itens</span>
+        </div>
+        <div class="flex items-center justify-between py-3">
+          <span class="text-slate-400 text-xs">Google Agenda</span>
+          <span id="summaryCalendar" class="text-xs px-2 py-0.5 rounded-full bg-slate-700 text-slate-400 border border-slate-600">Desconectado</span>
+        </div>
+      </div>
+      <button onclick="openModal()"
+        class="w-full mt-5 text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-xl py-2.5 text-sm font-medium transition">
+        + Novo Lançamento
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Transactions table ──────────────────────────────────────────────── -->
+  <div class="bg-slate-800 rounded-2xl border border-slate-700 fade-in">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-5 border-b border-slate-700">
+      <h2 class="font-semibold text-sm">Transações</h2>
+      <div class="flex items-center gap-2 flex-wrap">
+        <select id="filterType" onchange="loadTransactions()"
+          class="bg-slate-700 border border-slate-600 text-slate-300 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500">
+          <option value="">Todos os tipos</option>
+          <option value="receita">Receitas</option>
+          <option value="despesa">Despesas</option>
+        </select>
+        <select id="filterStatus" onchange="loadTransactions()"
+          class="bg-slate-700 border border-slate-600 text-slate-300 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500">
+          <option value="">Todos os status</option>
+          <option value="pago">Pago</option>
+          <option value="pendente">Pendente</option>
+          <option value="atrasado">Atrasado</option>
+        </select>
+        <button onclick="loadAll()" title="Atualizar"
+          class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-700">
+            <th class="text-left px-5 py-3 text-slate-400 font-medium text-xs">Descrição</th>
+            <th class="text-left px-4 py-3 text-slate-400 font-medium text-xs hidden sm:table-cell">Categoria</th>
+            <th class="text-left px-4 py-3 text-slate-400 font-medium text-xs">Valor</th>
+            <th class="text-left px-4 py-3 text-slate-400 font-medium text-xs hidden md:table-cell">Vencimento</th>
+            <th class="text-left px-4 py-3 text-slate-400 font-medium text-xs">Status</th>
+            <th class="text-right px-5 py-3 text-slate-400 font-medium text-xs">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="transactionsBody"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<!-- ── Modal ─────────────────────────────────────────────────────────────── -->
+<div id="modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
+  <div class="bg-slate-800 rounded-2xl w-full max-w-lg border border-slate-700 shadow-2xl shadow-slate-900/80 fade-in">
+
+    <div class="flex items-center justify-between px-6 py-5 border-b border-slate-700">
+      <h3 class="text-base font-semibold">Nova Transação</h3>
+      <button onclick="closeModal()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-700 transition">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <form id="transactionForm" onsubmit="submitTransaction(event)" class="px-6 py-5 space-y-4">
+
+      <!-- Type toggle -->
+      <div class="flex gap-1.5 p-1 bg-slate-900/60 rounded-xl border border-slate-700">
+        <button type="button" id="btnReceita" onclick="setType('receita')"
+          class="flex-1 py-2 text-sm font-medium rounded-lg transition">💰 Receita</button>
+        <button type="button" id="btnDespesa" onclick="setType('despesa')"
+          class="flex-1 py-2 text-sm font-medium rounded-lg transition">💸 Despesa</button>
+      </div>
+      <input type="hidden" id="formType" value="receita">
+
+      <!-- Description -->
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Descrição *</label>
+        <input type="text" id="formDesc" required placeholder="Ex: Pagamento Fornecedor ABC"
+          class="w-full bg-slate-700 border border-slate-600 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+      </div>
+
+      <!-- Amount + Category -->
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Valor (R$) *</label>
+          <input type="number" id="formAmount" required min="0.01" step="0.01" placeholder="0,00"
+            class="w-full bg-slate-700 border border-slate-600 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Categoria *</label>
+          <select id="formCategory" required
+            class="w-full bg-slate-700 border border-slate-600 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+          </select>
+        </div>
+      </div>
+
+      <!-- Date + Status -->
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Vencimento *</label>
+          <input type="date" id="formDate" required
+            class="w-full bg-slate-700 border border-slate-600 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Status</label>
+          <select id="formStatus"
+            class="w-full bg-slate-700 border border-slate-600 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+            <option value="pendente">Pendente</option>
+            <option value="pago">Pago</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Google Calendar sync -->
+      <label class="flex items-start gap-3 p-3.5 rounded-xl bg-slate-700/50 border border-slate-600/40 cursor-pointer hover:bg-slate-700/70 transition">
+        <input type="checkbox" id="formSync" class="mt-0.5 w-4 h-4 accent-blue-500 rounded cursor-pointer flex-shrink-0">
+        <div>
+          <span class="text-sm font-medium flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+              <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+            Sincronizar com Google Agenda
+          </span>
+          <p id="calendarSyncNote" class="text-xs text-slate-400 mt-0.5">Cria um evento na data de vencimento</p>
+        </div>
+      </label>
+
+      <!-- Error -->
+      <div id="formError" class="hidden text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3"></div>
+
+      <!-- Buttons -->
+      <div class="flex gap-3 pt-1">
+        <button type="button" onclick="closeModal()"
+          class="flex-1 py-2.5 text-sm font-medium text-slate-300 hover:text-white border border-slate-600 hover:border-slate-500 rounded-xl transition">
+          Cancelar
+        </button>
+        <button type="submit" id="btnSubmit"
+          class="flex-1 py-2.5 text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2">
+          <svg id="submitIconCheck" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>
+          <svg id="submitIconSpin" class="w-4 h-4 hidden animate-spin" viewBox="0 0 24 24" fill="none">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+          </svg>
+          <span id="submitLabel">Salvar</span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Toast ─────────────────────────────────────────────────────────────── -->
+<div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 hidden pointer-events-none">
+  <div id="toastContent" class="flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl text-sm font-medium border fade-in min-w-[240px]">
+    <span id="toastIcon" class="text-base flex-shrink-0"></span>
+    <span id="toastMsg"></span>
+  </div>
+</div>
+
+<script>
+// ── Constants ────────────────────────────────────────────────────────────────
+const MONTHS_PT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const CATEGORIES = {
+  receita: ['Vendas', 'Serviços Prestados', 'Comissões', 'Investimentos', 'Aluguéis Recebidos', 'Outros'],
+  despesa: ['Fornecedores', 'Funcionários / Folha', 'Marketing / Tráfego', 'Aluguel', 'Impostos / Taxas', 'Software / Assinaturas', 'Manutenção', 'Outros'],
+};
+const STATUS = {
+  pago:     { cls: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25', label: 'Pago' },
+  pendente: { cls: 'bg-amber-500/15 text-amber-400 border-amber-500/25',       label: 'Pendente' },
+  atrasado: { cls: 'bg-red-500/15 text-red-400 border-red-500/25',             label: 'Atrasado' },
+};
+
+let cashflowChart = null;
+let isAuth = false;
+let toastTimer = null;
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  const now = new Date();
+  document.getElementById('currentMonth').textContent =
+    `${MONTHS_PT[now.getMonth()]} de ${now.getFullYear()}`;
+  document.getElementById('formDate').valueAsDate = now;
+
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('auth') === 'success') {
+    showToast('Google Agenda conectado com sucesso!', 'success');
+    history.replaceState({}, '', '/');
+  } else if (params.get('auth') === 'error') {
+    showToast('Erro ao conectar Google Agenda. Tente novamente.', 'error');
+    history.replaceState({}, '', '/');
+  }
+
+  setType('receita');
+  checkAuth();
+  loadAll();
+});
+
+function loadAll() { loadDashboard(); loadTransactions(); }
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+async function checkAuth() {
+  try {
+    const r = await fetch('/api/auth/status');
+    isAuth = (await r.json()).authenticated;
+  } catch { isAuth = false; }
+  renderAuth();
+}
+
+function renderAuth() {
+  const dot     = document.getElementById('authDot');
+  const label   = document.getElementById('authLabel');
+  const btnConn = document.getElementById('btnConnectGoogle');
+  const badge   = document.getElementById('googleConnectedBadge');
+  const calNote = document.getElementById('calendarSyncNote');
+  const calSum  = document.getElementById('summaryCalendar');
+  const syncChk = document.getElementById('formSync');
+
+  if (isAuth) {
+    dot.className = 'w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0';
+    label.textContent = 'Google conectado';
+    label.className = 'text-emerald-400 text-sm hidden sm:inline';
+    btnConn.classList.replace('flex','hidden'); btnConn.classList.add('hidden');
+    badge.classList.remove('hidden'); badge.classList.add('flex');
+    calSum.textContent = 'Conectado';
+    calSum.className = 'text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25';
+    syncChk.disabled = false;
+    calNote.textContent = 'Cria um evento na data de vencimento';
+    calNote.className = 'text-xs text-slate-400 mt-0.5';
+  } else {
+    dot.className = 'w-2 h-2 rounded-full bg-slate-600 flex-shrink-0';
+    label.textContent = 'Google desconectado';
+    label.className = 'text-slate-400 text-sm hidden sm:inline';
+    btnConn.classList.remove('hidden'); btnConn.classList.add('flex');
+    badge.classList.add('hidden');
+    calSum.textContent = 'Desconectado';
+    calSum.className = 'text-xs px-2 py-0.5 rounded-full bg-slate-700 text-slate-400 border border-slate-600';
+    syncChk.disabled = true;
+    syncChk.checked = false;
+    calNote.textContent = 'Conecte sua conta Google para ativar';
+    calNote.className = 'text-xs text-amber-400/70 mt-0.5';
+  }
+}
+
+function connectGoogle() { window.location.href = '/api/auth/google'; }
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+async function loadDashboard() {
+  try {
+    const r = await fetch('/api/dashboard');
+    const d = await r.json();
+
+    const bal = document.getElementById('statBalance');
+    bal.textContent = fmt(d.balance);
+    bal.className = `text-2xl font-bold ${d.balance >= 0 ? 'text-blue-400' : 'text-red-400'}`;
+
+    document.getElementById('statIncome').textContent   = fmt(d.total_income);
+    document.getElementById('statExpenses').textContent = fmt(d.total_expenses);
+    document.getElementById('statPending').textContent  = fmt(d.pending_amount);
+    document.getElementById('statOverdue').textContent  =
+      `${d.overdue_count} transaç${d.overdue_count === 1 ? 'ão atrasada' : 'ões atrasadas'}`;
+    document.getElementById('summaryOverdueCount').textContent =
+      `${d.overdue_count} ${d.overdue_count === 1 ? 'item' : 'itens'}`;
+
+    renderChart(d.chart);
+  } catch (e) { console.error('Dashboard:', e); }
+}
+
+// ── Chart ─────────────────────────────────────────────────────────────────────
+function renderChart(data) {
+  const ctx = document.getElementById('cashflowChart').getContext('2d');
+  if (cashflowChart) cashflowChart.destroy();
+  cashflowChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.labels,
+      datasets: [
+        {
+          label: 'Receitas',
+          data: data.income,
+          backgroundColor: 'rgba(52,211,153,.2)',
+          borderColor: 'rgb(52,211,153)',
+          borderWidth: 2,
+          borderRadius: 5,
+          borderSkipped: false,
+        },
+        {
+          label: 'Despesas',
+          data: data.expenses,
+          backgroundColor: 'rgba(248,113,113,.2)',
+          borderColor: 'rgb(248,113,113)',
+          borderWidth: 2,
+          borderRadius: 5,
+          borderSkipped: false,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#94a3b8', font: { size: 11 }, boxWidth: 10, boxHeight: 10 } },
+        tooltip: {
+          backgroundColor: '#1e293b',
+          borderColor: '#334155',
+          borderWidth: 1,
+          titleColor: '#e2e8f0',
+          bodyColor: '#94a3b8',
+          callbacks: { label: c => ` ${c.dataset.label}: ${fmt(c.parsed.y)}` },
+        },
+      },
+      scales: {
+        x: { grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: { size: 10 } } },
+        y: {
+          grid: { color: '#1e293b' },
+          ticks: {
+            color: '#64748b', font: { size: 10 },
+            callback: v => v >= 1000 ? 'R$' + (v/1000).toFixed(0) + 'k' : 'R$' + v,
+          },
+        },
+      },
+    },
+  });
+}
+
+// ── Transactions ──────────────────────────────────────────────────────────────
+async function loadTransactions() {
+  const type   = document.getElementById('filterType').value;
+  const status = document.getElementById('filterStatus').value;
+  const q = new URLSearchParams();
+  if (type)   q.append('type',   type);
+  if (status) q.append('status', status);
+
+  try {
+    const r = await fetch('/api/transactions?' + q);
+    const data = await r.json();
+    renderRows(data);
+    document.getElementById('summaryCount').textContent = data.length;
+    const pendingIncome = data
+      .filter(t => t.type === 'receita' && t.status === 'pendente')
+      .reduce((s, t) => s + t.amount, 0);
+    document.getElementById('summaryIncomePending').textContent = fmt(pendingIncome);
+  } catch (e) { console.error('Transactions:', e); }
+}
+
+function renderRows(rows) {
+  const tbody = document.getElementById('transactionsBody');
+  if (!rows.length) {
+    tbody.innerHTML = `
+      <tr><td colspan="6" class="px-5 py-12 text-center text-slate-500 text-sm">
+        <svg class="w-10 h-10 mx-auto mb-2 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        Nenhuma transação encontrada
+      </td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(t => {
+    const isR = t.type === 'receita';
+    const s = STATUS[t.status] || STATUS.pendente;
+    const calBadge = t.calendar_event_id
+      ? `<svg class="w-3 h-3 text-blue-400 flex-shrink-0" title="No Google Agenda" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>` : '';
+    const markBtn = t.status !== 'pago'
+      ? `<button onclick="markPaid(${t.id})" title="Marcar como pago"
+           class="p-1.5 rounded-lg text-slate-500 hover:text-emerald-400 hover:bg-slate-700/80 transition">
+           <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>
+         </button>` : '';
+
+    return `<tr class="border-b border-slate-700/40 hover:bg-slate-700/25 transition-colors group">
+      <td class="px-5 py-3.5">
+        <div class="flex items-center gap-2.5">
+          <div class="w-1 h-8 rounded-full flex-shrink-0 ${isR ? 'bg-emerald-500' : 'bg-red-500'}"></div>
+          <div class="min-w-0">
+            <p class="font-medium text-sm leading-tight truncate max-w-[180px] sm:max-w-xs">${esc(t.description)}</p>
+            <p class="text-slate-500 text-xs mt-0.5 flex items-center gap-1">
+              ${isR ? '↑ Receita' : '↓ Despesa'} ${calBadge}
+            </p>
+          </div>
+        </div>
+      </td>
+      <td class="px-4 py-3.5 hidden sm:table-cell">
+        <span class="text-slate-400 text-xs">${esc(t.category)}</span>
+      </td>
+      <td class="px-4 py-3.5">
+        <span class="font-semibold text-sm ${isR ? 'text-emerald-400' : 'text-red-400'}">
+          ${isR ? '+' : '−'} ${fmt(t.amount)}
+        </span>
+      </td>
+      <td class="px-4 py-3.5 hidden md:table-cell">
+        <span class="text-slate-400 text-xs">${fmtDate(t.due_date)}</span>
+      </td>
+      <td class="px-4 py-3.5">
+        <span class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${s.cls}">${s.label}</span>
+      </td>
+      <td class="px-5 py-3.5">
+        <div class="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          ${markBtn}
+          <button onclick="delTx(${t.id})" title="Excluir"
+            class="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-slate-700/80 transition">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+          </button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function markPaid(id) {
+  await fetch(`/api/transactions/${id}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'pago' }),
+  });
+  showToast('Marcado como pago!', 'success');
+  loadAll();
+}
+
+async function delTx(id) {
+  if (!confirm('Excluir esta transação? Esta ação não pode ser desfeita.')) return;
+  await fetch(`/api/transactions/${id}`, { method: 'DELETE' });
+  showToast('Transação excluída', 'info');
+  loadAll();
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+function openModal() {
+  document.getElementById('modal').classList.remove('hidden');
+  document.getElementById('modal').classList.add('flex');
+  document.getElementById('formError').classList.add('hidden');
+  document.body.classList.add('modal-open');
+}
+function closeModal() {
+  document.getElementById('modal').classList.add('hidden');
+  document.getElementById('modal').classList.remove('flex');
+  document.getElementById('transactionForm').reset();
+  document.getElementById('formDate').valueAsDate = new Date();
+  document.body.classList.remove('modal-open');
+  setType('receita');
+}
+document.getElementById('modal').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+
+function setType(type) {
+  document.getElementById('formType').value = type;
+  const rBtn = document.getElementById('btnReceita');
+  const dBtn = document.getElementById('btnDespesa');
+  if (type === 'receita') {
+    rBtn.className = 'flex-1 py-2 text-sm font-medium rounded-lg transition bg-emerald-500/20 text-emerald-300 border border-emerald-500/25';
+    dBtn.className = 'flex-1 py-2 text-sm font-medium rounded-lg transition text-slate-400 hover:text-slate-200';
+  } else {
+    rBtn.className = 'flex-1 py-2 text-sm font-medium rounded-lg transition text-slate-400 hover:text-slate-200';
+    dBtn.className = 'flex-1 py-2 text-sm font-medium rounded-lg transition bg-red-500/20 text-red-300 border border-red-500/25';
+  }
+  const sel = document.getElementById('formCategory');
+  sel.innerHTML = CATEGORIES[type].map(c => `<option value="${c}">${c}</option>`).join('');
+}
+
+async function submitTransaction(e) {
+  e.preventDefault();
+  const btn   = document.getElementById('btnSubmit');
+  const check = document.getElementById('submitIconCheck');
+  const spin  = document.getElementById('submitIconSpin');
+  const label = document.getElementById('submitLabel');
+  const errEl = document.getElementById('formError');
+
+  btn.disabled = true;
+  check.classList.add('hidden');
+  spin.classList.remove('hidden');
+  label.textContent = 'Salvando...';
+  errEl.classList.add('hidden');
+
+  const payload = {
+    description:   document.getElementById('formDesc').value.trim(),
+    amount:        parseFloat(document.getElementById('formAmount').value),
+    type:          document.getElementById('formType').value,
+    category:      document.getElementById('formCategory').value,
+    due_date:      document.getElementById('formDate').value,
+    status:        document.getElementById('formStatus').value,
+    sync_calendar: document.getElementById('formSync').checked,
+  };
+
+  try {
+    const r = await fetch('/api/transactions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || 'Erro ao salvar');
+    const data = await r.json();
+    showToast(
+      data.calendar_event_id ? 'Salvo e sincronizado com Google Agenda!' : 'Transação salva com sucesso!',
+      'success',
+    );
+    closeModal();
+    loadAll();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+    check.classList.remove('hidden');
+    spin.classList.add('hidden');
+    label.textContent = 'Salvar';
+  }
+}
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
+function fmt(v) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
+}
+function fmtDate(s) {
+  if (!s) return '—';
+  const [y, m, d] = s.split('-');
+  return `${d}/${m}/${y}`;
+}
+function esc(s) {
+  const d = document.createElement('div');
+  d.appendChild(document.createTextNode(String(s)));
+  return d.innerHTML;
+}
+function showToast(msg, type = 'info') {
+  const map = {
+    success: { cls: 'bg-slate-800 border-emerald-500/30 text-emerald-300', icon: '✓' },
+    error:   { cls: 'bg-slate-800 border-red-500/30 text-red-300',         icon: '✕' },
+    info:    { cls: 'bg-slate-800 border-blue-500/30 text-blue-300',       icon: 'i' },
+  };
+  const s = map[type] || map.info;
+  document.getElementById('toastContent').className =
+    `flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl text-sm font-medium border fade-in min-w-[240px] ${s.cls}`;
+  document.getElementById('toastIcon').textContent = s.icon;
+  document.getElementById('toastMsg').textContent = msg;
+  const t = document.getElementById('toast');
+  t.classList.remove('hidden');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add('hidden'), 4000);
+}
+</script>
+</body>
+</html>
