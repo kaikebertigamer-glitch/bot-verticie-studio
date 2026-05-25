@@ -1,1 +1,1 @@
-web: python bot_atendimento.py --server
+web: python3 bot_atendimento.py --server
