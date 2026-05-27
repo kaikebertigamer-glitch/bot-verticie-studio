@@ -29,6 +29,9 @@ ZAPI_TOKEN        = os.getenv("ZAPI_TOKEN",          "218FD1D410194581EAD962CD")
 ZAPI_CLIENT_TOKEN = os.getenv("ZAPI_CLIENT_TOKEN",   "Fcb0b8e82daa948a29a14e33282228397S")
 ZAPI_BASE         = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}"
 REUNIOES_FILE     = os.getenv("REUNIOES_FILE", "reunioes.json")
+FB_ACCESS_TOKEN   = os.getenv("FB_ACCESS_TOKEN", "")
+FB_AD_ACCOUNT_ID  = os.getenv("FB_AD_ACCOUNT_ID", "")  # formato: act_XXXXXXXXX
+FB_BASE           = "https://graph.facebook.com/v21.0"
 
 MODEL = "claude-opus-4-7"
 
@@ -720,6 +723,77 @@ Retorne APENAS JSON válido neste formato:
         return json.loads(raw.strip())
     except Exception:
         return {"erro": "Falha ao parsear resposta", "raw": raw}
+
+# ── Facebook Ads ──────────────────────────────────────────────────────────────
+@app.get("/facebook/status")
+async def facebook_status():
+    return {
+        "configurado": bool(FB_ACCESS_TOKEN and FB_AD_ACCOUNT_ID),
+        "tem_token": bool(FB_ACCESS_TOKEN),
+        "tem_conta": bool(FB_AD_ACCOUNT_ID),
+    }
+
+@app.get("/facebook/overview")
+async def facebook_overview(periodo: str = "last_30d"):
+    if not FB_ACCESS_TOKEN or not FB_AD_ACCOUNT_ID:
+        raise HTTPException(400, "Facebook não configurado. Defina FB_ACCESS_TOKEN e FB_AD_ACCOUNT_ID no Railway.")
+    r = requests.get(f"{FB_BASE}/{FB_AD_ACCOUNT_ID}/insights", params={
+        "fields": "spend,impressions,clicks,ctr,cpc,reach,actions,action_values",
+        "date_preset": periodo,
+        "access_token": FB_ACCESS_TOKEN,
+    }, timeout=15)
+    if not r.ok:
+        raise HTTPException(r.status_code, r.json().get("error", {}).get("message", "Erro Facebook API"))
+    data = r.json().get("data", [])
+    return data[0] if data else {}
+
+@app.get("/facebook/campanhas")
+async def facebook_campanhas(periodo: str = "last_30d"):
+    if not FB_ACCESS_TOKEN or not FB_AD_ACCOUNT_ID:
+        raise HTTPException(400, "Facebook não configurado.")
+    r = requests.get(f"{FB_BASE}/{FB_AD_ACCOUNT_ID}/campaigns", params={
+        "fields": "name,status,objective,daily_budget,lifetime_budget,budget_remaining,start_time,stop_time",
+        "access_token": FB_ACCESS_TOKEN,
+        "limit": 25,
+    }, timeout=15)
+    if not r.ok:
+        raise HTTPException(r.status_code, r.json().get("error", {}).get("message", "Erro Facebook API"))
+    campanhas = r.json().get("data", [])
+    for camp in campanhas:
+        try:
+            ins = requests.get(f"{FB_BASE}/{camp['id']}/insights", params={
+                "fields": "spend,impressions,clicks,ctr,cpc,reach,actions",
+                "date_preset": periodo,
+                "access_token": FB_ACCESS_TOKEN,
+            }, timeout=10)
+            camp["insights"] = ins.json().get("data", [{}])[0] if ins.ok else {}
+        except Exception:
+            camp["insights"] = {}
+    return campanhas
+
+@app.get("/facebook/adsets/{campaign_id}")
+async def facebook_adsets(campaign_id: str, periodo: str = "last_30d"):
+    if not FB_ACCESS_TOKEN:
+        raise HTTPException(400, "Facebook não configurado.")
+    r = requests.get(f"{FB_BASE}/{campaign_id}/adsets", params={
+        "fields": "name,status,daily_budget,targeting",
+        "access_token": FB_ACCESS_TOKEN,
+        "limit": 20,
+    }, timeout=15)
+    if not r.ok:
+        raise HTTPException(r.status_code, "Erro ao buscar conjuntos de anúncios")
+    adsets = r.json().get("data", [])
+    for ads in adsets:
+        try:
+            ins = requests.get(f"{FB_BASE}/{ads['id']}/insights", params={
+                "fields": "spend,impressions,clicks,ctr,cpc",
+                "date_preset": periodo,
+                "access_token": FB_ACCESS_TOKEN,
+            }, timeout=10)
+            ads["insights"] = ins.json().get("data", [{}])[0] if ins.ok else {}
+        except Exception:
+            ads["insights"] = {}
+    return adsets
 
 # ── Endpoints do bot ──────────────────────────────────────────────────────────
 @app.get("/")
