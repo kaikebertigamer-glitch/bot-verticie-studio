@@ -665,6 +665,62 @@ async def video_ia_status(job_id: str):
         raise HTTPException(status_code=404, detail="Job não encontrado")
     return job
 
+# ── Gerador de Prompts ────────────────────────────────────────────────────────
+PROMPT_ENGINEER_SYSTEM = """Você é o melhor prompt engineer do mundo para geração de vídeos com IA e copy para anúncios.
+Você estudou cada detalhe dos modelos Runway Gen-4, Google Veo 3 e das melhores técnicas de copywriting para Facebook/Instagram Ads.
+
+Suas especialidades:
+- Runway Gen-4: cinematografia, movimentos de câmera, descrições de cenas físicas e realistas, timing
+- Google Veo 3: narrativa visual, transições, qualidade cinematográfica 4K, áudio diegético
+- Copy de Anúncio: hook de 3 segundos, dor, solução, prova social, CTA irresistível
+
+Você sempre pensa em anúncios que PARAM O SCROLL, geram DESEJO e CONVERTEM."""
+
+class GerarPromptRequest(BaseModel):
+    objetivo: str
+    nicho: str = ""
+    publico: str = ""
+
+@app.post("/gerar-prompt")
+async def gerar_prompt(body: GerarPromptRequest):
+    client = anthropic.Anthropic(api_key=API_KEY)
+    contexto = body.objetivo
+    if body.nicho:
+        contexto += f" | Nicho: {body.nicho}"
+    if body.publico:
+        contexto += f" | Público: {body.publico}"
+
+    msg = client.messages.create(
+        model=MODEL,
+        max_tokens=2000,
+        system=PROMPT_ENGINEER_SYSTEM,
+        messages=[{
+            "role": "user",
+            "content": f"""Gere 3 prompts otimizados para este anúncio:
+OBJETIVO: {contexto}
+
+Retorne APENAS JSON válido neste formato:
+{{
+  "runway": "prompt completo otimizado para Runway Gen-4 em inglês, 2-4 frases descrevendo a cena, câmera, iluminação e movimento",
+  "veo3": "prompt completo otimizado para Google Veo 3 em inglês, cinematográfico, com áudio ambiente sugerido, 3-5 frases",
+  "copy": "copy completo em português para o anúncio: hook de 3s / problema / solução / prova social / CTA. Use quebras de linha entre cada parte.",
+  "dica_runway": "dica específica de 1 frase para maximizar esse prompt no Runway",
+  "dica_veo3": "dica específica de 1 frase para maximizar esse prompt no Veo 3",
+  "dica_copy": "dica específica de 1 frase sobre o ângulo psicológico usado"
+}}"""
+        }]
+    )
+
+    raw = msg.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    try:
+        return json.loads(raw.strip())
+    except Exception:
+        return {"erro": "Falha ao parsear resposta", "raw": raw}
+
 # ── Endpoints do bot ──────────────────────────────────────────────────────────
 @app.get("/")
 def health():
