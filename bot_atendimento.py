@@ -20,7 +20,7 @@ from typing import Optional
 import uvicorn
 
 # ── Credenciais ───────────────────────────────────────────────────────────────
-API_KEY           = os.getenv("ANTHROPIC_API_KEY",   "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")
+API_KEY           = os.getenv("ANTHROPIC_API_KEY",   "")
 ZAPI_INSTANCE     = os.getenv("ZAPI_INSTANCE",       "3F3A9513AC5312D5128CBE824EEE0644")
 ZAPI_TOKEN        = os.getenv("ZAPI_TOKEN",          "218FD1D410194581EAD962CD")
 ZAPI_CLIENT_TOKEN = os.getenv("ZAPI_CLIENT_TOKEN",   "Fcb0b8e82daa948a29a14e33282228397S")
