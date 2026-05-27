@@ -1609,6 +1609,484 @@ async def follow_up_email_automatico():
     return {"enviados": len(enviados), "erros": len(erros), "detalhes": enviados}
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 1. GERADOR DE CONTRATO PDF
+# ══════════════════════════════════════════════════════════════════════════════
+
+class ContratoInput(BaseModel):
+    nome_cliente: str
+    empresa: Optional[str] = ""
+    nicho: str
+    plano: str
+    valor_mensal: float
+    duracao_meses: int = 12
+    servicos: str
+    data_inicio: Optional[str] = ""
+
+@app.post("/gerar-contrato")
+async def gerar_contrato(body: ContratoInput):
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.lib.colors import HexColor
+        from reportlab.lib.units import cm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable, Table, TableStyle
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT
+        import io
+        from fastapi.responses import StreamingResponse
+        from datetime import date, timedelta
+    except ImportError:
+        raise HTTPException(status_code=500, detail="reportlab não instalado")
+
+    client = anthropic.Anthropic(api_key=API_KEY)
+    hoje = date.today()
+    fim = hoje + timedelta(days=30 * body.duracao_meses)
+
+    clausulas_resp = client.messages.create(
+        model=MODEL, max_tokens=1800,
+        messages=[{"role": "user", "content": f"""Gere as cláusulas de um contrato de prestação de serviços de marketing digital e automação com IA entre:
+
+CONTRATANTE: {body.nome_cliente} ({body.empresa or body.nicho})
+CONTRATADA: Vértice Studio
+SERVIÇOS: {body.servicos}
+PLANO: {body.plano}
+VALOR: R$ {body.valor_mensal:.2f}/mês
+DURAÇÃO: {body.duracao_meses} meses ({hoje.strftime('%d/%m/%Y')} a {fim.strftime('%d/%m/%Y')})
+
+Escreva de 6 a 8 cláusulas numeradas e objetivas cobrindo: objeto do contrato, obrigações das partes, forma de pagamento, prazo e renovação, confidencialidade, rescisão, propriedade intelectual e foro. Tom formal e jurídico."""}]
+    )
+    clausulas = clausulas_resp.content[0].text
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+        rightMargin=2.5*cm, leftMargin=2.5*cm, topMargin=2*cm, bottomMargin=2*cm)
+
+    GOLD = HexColor('#e8c97a'); DARK = HexColor('#0f1117'); SLATE = HexColor('#94a3b8')
+
+    s_tit = ParagraphStyle('tit', fontSize=18, textColor=GOLD, fontName='Helvetica-Bold', spaceAfter=4, alignment=TA_CENTER)
+    s_sub = ParagraphStyle('sub', fontSize=10, textColor=SLATE, fontName='Helvetica', spaceAfter=20, alignment=TA_CENTER)
+    s_label = ParagraphStyle('label', fontSize=9, textColor=SLATE, fontName='Helvetica', spaceAfter=2)
+    s_val = ParagraphStyle('val', fontSize=11, textColor=HexColor('#ffffff'), fontName='Helvetica-Bold', spaceAfter=12)
+    s_h2 = ParagraphStyle('h2', fontSize=12, textColor=GOLD, fontName='Helvetica-Bold', spaceBefore=14, spaceAfter=6)
+    s_body = ParagraphStyle('body', fontSize=10, textColor=HexColor('#cbd5e1'), fontName='Helvetica', leading=16, spaceAfter=8)
+    s_footer = ParagraphStyle('foot', fontSize=8, textColor=SLATE, fontName='Helvetica', alignment=TA_CENTER)
+
+    story = [
+        Paragraph("VÉRTICE STUDIO", s_tit),
+        Paragraph("Contrato de Prestação de Serviços", s_sub),
+        HRFlowable(width="100%", thickness=1, color=GOLD, spaceAfter=20),
+    ]
+
+    dados_tabela = [
+        ["Contratante", body.nome_cliente + (f" / {body.empresa}" if body.empresa else "")],
+        ["Contratada", "Vértice Studio"],
+        ["Nicho / Segmento", body.nicho],
+        ["Plano contratado", body.plano],
+        ["Valor mensal", f"R$ {body.valor_mensal:,.2f}".replace(",","X").replace(".",",").replace("X",".")],
+        ["Duração", f"{body.duracao_meses} meses"],
+        ["Início", body.data_inicio or hoje.strftime('%d/%m/%Y')],
+        ["Término", fim.strftime('%d/%m/%Y')],
+    ]
+    t = Table(dados_tabela, colWidths=[4.5*cm, 12*cm])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (0,-1), HexColor('#1a1e2a')),
+        ('TEXTCOLOR', (0,0), (0,-1), HexColor('#e8c97a')),
+        ('TEXTCOLOR', (1,0), (1,-1), HexColor('#cbd5e1')),
+        ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),
+        ('FONTSIZE', (0,0), (-1,-1), 9),
+        ('ROWBACKGROUNDS', (0,0), (-1,-1), [HexColor('#0f1117'), HexColor('#131720')]),
+        ('GRID', (0,0), (-1,-1), 0.5, HexColor('#1e293b')),
+        ('PADDING', (0,0), (-1,-1), 6),
+        ('TOPPADDING', (0,0), (-1,-1), 8),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+    ]))
+    story.append(t)
+    story.append(Spacer(1, 20))
+    story.append(Paragraph("SERVIÇOS INCLUÍDOS", s_h2))
+    story.append(Paragraph(body.servicos, s_body))
+    story.append(Spacer(1, 8))
+    story.append(Paragraph("CLÁUSULAS CONTRATUAIS", s_h2))
+
+    for linha in clausulas.split('\n'):
+        l = linha.strip()
+        if not l:
+            story.append(Spacer(1, 4))
+        elif l[:2].replace('.','').isdigit():
+            story.append(Paragraph(l, s_h2))
+        else:
+            story.append(Paragraph(l, s_body))
+
+    story.append(Spacer(1, 30))
+    assinaturas = [
+        ["_______________________________", "_______________________________"],
+        [body.nome_cliente, "Vértice Studio"],
+        ["Contratante", "Contratada"],
+    ]
+    ta = Table(assinaturas, colWidths=[8*cm, 8*cm])
+    ta.setStyle(TableStyle([
+        ('TEXTCOLOR', (0,0), (-1,-1), HexColor('#94a3b8')),
+        ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),
+        ('FONTSIZE', (0,0), (-1,-1), 9),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+    ]))
+    story.append(ta)
+    story.append(Spacer(1, 20))
+    story.append(HRFlowable(width="100%", thickness=1, color=HexColor('#1e293b')))
+    story.append(Spacer(1, 6))
+    story.append(Paragraph(f"Vértice Studio · verticestudio.com.br · Gerado em {hoje.strftime('%d/%m/%Y')}", s_footer))
+
+    doc.build(story)
+    buf.seek(0)
+    fname = f"contrato_{body.nome_cliente.replace(' ','_').lower()}.pdf"
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(buf, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 2. ONBOARDING AUTOMÁTICO
+# ══════════════════════════════════════════════════════════════════════════════
+
+ONBOARDING_TASKS = [
+    "Reunião de kickoff agendada",
+    "Acesso ao portal do cliente enviado",
+    "Briefing completo preenchido",
+    "Configuração do bot WhatsApp",
+    "Primeiros criativos aprovados",
+    "Campanha no ar",
+    "Primeiro relatório enviado",
+]
+
+@app.post("/onboarding/{cliente_id}")
+async def iniciar_onboarding(cliente_id: str):
+    clientes = _carregar_json(CLIENTES_FILE)
+    cliente = next((c for c in clientes if c.get("id") == cliente_id), None)
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado")
+
+    nome = cliente.get("nome", "")
+    nicho = cliente.get("nicho", "seu negócio")
+    plano = cliente.get("plano", "")
+    telefone = cliente.get("telefone", "")
+
+    # Gera mensagem de boas-vindas personalizada com Claude
+    ai = anthropic.Anthropic(api_key=API_KEY)
+    bv = ai.messages.create(
+        model=MODEL, max_tokens=300,
+        messages=[{"role": "user", "content": f"""Crie uma mensagem de boas-vindas para WhatsApp para o novo cliente da Vértice Studio:
+
+Nome: {nome}
+Nicho: {nicho}
+Plano: {plano}
+
+Máximo 4 linhas. Tom de sócio animado, não de atendente. Mencione que a jornada começa agora e que em breve entraremos em contato para o kickoff. Inclua emojis estratégicos."""}]
+    )
+    msg_bv = bv.content[0].text
+
+    # Envia WhatsApp se tiver telefone
+    wpp_enviado = False
+    if telefone:
+        try:
+            enviar_whatsapp(telefone, msg_bv)
+            wpp_enviado = True
+        except Exception:
+            pass
+
+    # Cria registro de onboarding no JSON de tarefas
+    escalas = _carregar_json("escalas.json")
+    onboarding_entry = {
+        "id": str(uuid.uuid4()),
+        "tipo": "onboarding",
+        "cliente_id": cliente_id,
+        "cliente_nome": nome,
+        "criado_em": __import__('datetime').datetime.now().isoformat(),
+        "tasks": [{"task": t, "done": False} for t in ONBOARDING_TASKS],
+        "mensagem_bv": msg_bv,
+    }
+    escalas.append(onboarding_entry)
+    _salvar_json("escalas.json", escalas)
+
+    return {
+        "status": "onboarding_iniciado",
+        "cliente": nome,
+        "whatsapp_enviado": wpp_enviado,
+        "mensagem": msg_bv,
+        "tasks": ONBOARDING_TASKS,
+    }
+
+@app.get("/onboarding/{cliente_id}")
+async def ver_onboarding(cliente_id: str):
+    escalas = _carregar_json("escalas.json")
+    ob = next((e for e in reversed(escalas) if e.get("tipo") == "onboarding" and e.get("cliente_id") == cliente_id), None)
+    if not ob:
+        return {"status": "nao_iniciado", "tasks": []}
+    return ob
+
+@app.patch("/onboarding/{cliente_id}/task/{task_idx}")
+async def check_onboarding_task(cliente_id: str, task_idx: int):
+    escalas = _carregar_json("escalas.json")
+    for e in reversed(escalas):
+        if e.get("tipo") == "onboarding" and e.get("cliente_id") == cliente_id:
+            if 0 <= task_idx < len(e.get("tasks", [])):
+                e["tasks"][task_idx]["done"] = not e["tasks"][task_idx]["done"]
+            _salvar_json("escalas.json", escalas)
+            return e
+    raise HTTPException(status_code=404, detail="Onboarding não encontrado")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 4. SCORE DE SAÚDE DO CLIENTE
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _calcular_score(cliente: dict, reunioes: list) -> dict:
+    from datetime import datetime, timedelta
+    score = 50
+    fatores = []
+
+    # Fator 1: última reunião
+    reunioes_cliente = [r for r in reunioes if body_match(r, cliente.get("nome", ""))]
+    if reunioes_cliente:
+        ultima = max(reunioes_cliente, key=lambda r: r.get("data", ""))
+        try:
+            dt = datetime.strptime(ultima["data"], "%Y-%m-%d")
+            dias = (datetime.now() - dt).days
+            if dias <= 15:   score += 25; fatores.append(("reunião recente", +25))
+            elif dias <= 30: score += 15; fatores.append(("reunião no mês", +15))
+            elif dias <= 60: score += 0;  fatores.append(("reunião há 2 meses", 0))
+            else:            score -= 20; fatores.append(("sem reunião há 60+ dias", -20))
+        except Exception:
+            pass
+    else:
+        score -= 10
+        fatores.append(("sem reuniões registradas", -10))
+
+    # Fator 2: tempo de contrato
+    data_inicio = cliente.get("data_inicio", "")
+    if data_inicio:
+        try:
+            partes = data_inicio.split("/")
+            dt_ini = datetime(int(partes[2]), int(partes[1]), int(partes[0]))
+            meses = ((datetime.now() - dt_ini).days) // 30
+            if meses >= 6:   score += 20; fatores.append((f"{meses}m de contrato", +20))
+            elif meses >= 3: score += 10; fatores.append((f"{meses}m de contrato", +10))
+            elif meses <= 1: score -= 5;  fatores.append(("cliente novo", -5))
+        except Exception:
+            pass
+
+    # Fator 3: plano
+    plano = cliente.get("plano", "")
+    if plano in ("Premium", "Personalizado"): score += 10; fatores.append(("plano premium", +10))
+    elif plano == "Básico":                   score -= 5;  fatores.append(("plano básico", -5))
+
+    score = max(0, min(100, score))
+    if score >= 70:   nivel = "saudavel"
+    elif score >= 45: nivel = "atencao"
+    else:             nivel = "risco"
+
+    return {"score": score, "nivel": nivel, "fatores": fatores}
+
+def body_match(reuniao: dict, nome_cliente: str) -> bool:
+    nome_lower = nome_cliente.lower()
+    return (nome_lower in reuniao.get("nome_cliente", "").lower() or
+            nome_lower in reuniao.get("notas", "").lower())
+
+@app.get("/saude-clientes")
+async def saude_clientes():
+    clientes = _carregar_json(CLIENTES_FILE)
+    reunioes = _carregar_json(REUNIOES_FILE)
+    ativos = [c for c in clientes if c.get("status") == "ativo"]
+    resultado = []
+    for c in ativos:
+        saude = _calcular_score(c, reunioes)
+        resultado.append({
+            "id": c.get("id"),
+            "nome": c.get("nome"),
+            "empresa": c.get("empresa", ""),
+            "plano": c.get("plano", ""),
+            "valor_mensal": c.get("valor_mensal", 0),
+            **saude,
+        })
+    resultado.sort(key=lambda x: x["score"])
+    return resultado
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 5. PUBLICAÇÃO AUTOMÁTICA NO INSTAGRAM
+# ══════════════════════════════════════════════════════════════════════════════
+
+IG_USER_ID     = os.getenv("IG_USER_ID", "")
+IG_BASE        = "https://graph.facebook.com/v21.0"
+
+class PublicarIGInput(BaseModel):
+    conteudo_id: str
+    image_url: str          # URL pública da imagem
+    caption: Optional[str] = ""
+
+@app.post("/publicar-instagram")
+async def publicar_instagram(body: PublicarIGInput):
+    if not IG_USER_ID or not FB_ACCESS_TOKEN:
+        raise HTTPException(status_code=400, detail="IG_USER_ID ou FB_ACCESS_TOKEN não configurados nas variáveis de ambiente Railway")
+
+    # 1. Criar container de mídia
+    r1 = requests.post(
+        f"{IG_BASE}/{IG_USER_ID}/media",
+        params={
+            "image_url": body.image_url,
+            "caption": body.caption,
+            "access_token": FB_ACCESS_TOKEN,
+        }
+    )
+    if not r1.ok:
+        raise HTTPException(status_code=502, detail=f"Erro ao criar container IG: {r1.text}")
+    creation_id = r1.json().get("id")
+
+    # 2. Publicar
+    r2 = requests.post(
+        f"{IG_BASE}/{IG_USER_ID}/media_publish",
+        params={"creation_id": creation_id, "access_token": FB_ACCESS_TOKEN}
+    )
+    if not r2.ok:
+        raise HTTPException(status_code=502, detail=f"Erro ao publicar no IG: {r2.text}")
+
+    ig_post_id = r2.json().get("id")
+
+    # Atualiza status no conteudo.json
+    conteudo = _carregar_json(CONTEUDO_FILE)
+    for item in conteudo:
+        if item.get("id") == body.conteudo_id:
+            item["status"] = "publicado"
+            item["ig_post_id"] = ig_post_id
+            from datetime import datetime
+            item["publicado_em"] = datetime.now().isoformat()
+            break
+    _salvar_json(CONTEUDO_FILE, conteudo)
+
+    return {"status": "publicado", "ig_post_id": ig_post_id, "conteudo_id": body.conteudo_id}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 7. DASHBOARD PÚBLICO DE RESULTADOS DO CLIENTE
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/resultados-cliente/{token}")
+async def resultados_cliente(token: str):
+    """Retorna métricas públicas do cliente pelo token (= ID do cliente)."""
+    clientes = _carregar_json(CLIENTES_FILE)
+    cliente = next((c for c in clientes if c.get("id") == token), None)
+    if not cliente or cliente.get("status") != "ativo":
+        raise HTTPException(status_code=404, detail="Cliente não encontrado ou inativo")
+
+    reunioes = _carregar_json(REUNIOES_FILE)
+    conteudo = _carregar_json(CONTEUDO_FILE)
+    leads_data = _carregar_json(LEADS_FILE)
+
+    from datetime import datetime
+    agora = datetime.now()
+    mes_atual = agora.month
+    ano_atual = agora.year
+
+    reunioes_mes = len([r for r in reunioes
+        if body_match(r, cliente.get("nome", ""))
+        and r.get("data", "")[:7] == f"{ano_atual}-{mes_atual:02d}"])
+
+    posts_publicados = len([c for c in conteudo if c.get("status") == "publicado"])
+    posts_agendados = len([c for c in conteudo if c.get("status") == "agendado"])
+
+    leads_mes = len([l for l in leads_data
+        if l.get("criado_em", "")[:7] == f"{ano_atual}-{mes_atual:02d}"])
+    leads_quentes = len([l for l in leads_data if l.get("score") == "quente"])
+
+    saude = _calcular_score(cliente, reunioes)
+
+    return {
+        "cliente": {
+            "nome": cliente.get("nome"),
+            "empresa": cliente.get("empresa", ""),
+            "nicho": cliente.get("nicho", ""),
+            "plano": cliente.get("plano"),
+            "data_inicio": cliente.get("data_inicio", ""),
+        },
+        "mes": f"{mes_atual:02d}/{ano_atual}",
+        "metricas": {
+            "reunioes_mes": reunioes_mes,
+            "posts_publicados": posts_publicados,
+            "posts_agendados": posts_agendados,
+            "leads_mes": leads_mes,
+            "leads_quentes": leads_quentes,
+            "score_saude": saude["score"],
+            "nivel_saude": saude["nivel"],
+        },
+        "valor_mensal": cliente.get("valor_mensal", 0),
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 8. DETECTOR DE CHURN
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/detector-churn")
+async def detector_churn():
+    clientes = _carregar_json(CLIENTES_FILE)
+    reunioes = _carregar_json(REUNIOES_FILE)
+    ativos = [c for c in clientes if c.get("status") == "ativo"]
+
+    em_risco = []
+    atencao = []
+    saudaveis = []
+
+    for c in ativos:
+        saude = _calcular_score(c, reunioes)
+        entry = {
+            "id": c.get("id"),
+            "nome": c.get("nome"),
+            "empresa": c.get("empresa", ""),
+            "plano": c.get("plano", ""),
+            "valor_mensal": c.get("valor_mensal", 0),
+            "score": saude["score"],
+            "nivel": saude["nivel"],
+            "fatores": saude["fatores"],
+            "data_inicio": c.get("data_inicio", ""),
+        }
+        if saude["nivel"] == "risco":
+            em_risco.append(entry)
+        elif saude["nivel"] == "atencao":
+            atencao.append(entry)
+        else:
+            saudaveis.append(entry)
+
+    mrr_risco = sum(c["valor_mensal"] for c in em_risco)
+
+    # Gera insight com Claude se houver clientes em risco
+    insight = ""
+    if em_risco:
+        nomes = ", ".join(c["nome"] for c in em_risco[:3])
+        ai = anthropic.Anthropic(api_key=API_KEY)
+        r = ai.messages.create(
+            model=MODEL, max_tokens=200,
+            messages=[{"role": "user", "content": f"""Em 2-3 linhas diretas, sugira ações prioritárias para reter estes clientes em risco de churn na Vértice Studio:
+{nomes}
+Score médio: {sum(c['score'] for c in em_risco)//len(em_risco) if em_risco else 0}/100
+MRR em risco: R$ {mrr_risco:.0f}
+Fale como dono da agência, não como consultor."""}]
+        )
+        insight = r.content[0].text
+
+    return {
+        "resumo": {
+            "total_ativos": len(ativos),
+            "em_risco": len(em_risco),
+            "atencao": len(atencao),
+            "saudaveis": len(saudaveis),
+            "mrr_em_risco": mrr_risco,
+        },
+        "insight_ia": insight,
+        "clientes_risco": em_risco,
+        "clientes_atencao": atencao,
+        "clientes_saudaveis": saudaveis,
+    }
+
+
 @app.get("/")
 def health():
     return {"status": "online", "bot": "Vértice Studio"}
