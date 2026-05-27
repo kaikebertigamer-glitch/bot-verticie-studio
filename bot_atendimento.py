@@ -9,14 +9,17 @@ import sys
 import os
 import json
 import uuid
+import subprocess
+import threading
 import requests
 import anthropic
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 import uvicorn
 
 # ── Credenciais ───────────────────────────────────────────────────────────────
@@ -340,6 +343,194 @@ async def gerar_post(body: GerarPostRequest):
             return b.input
 
     raise HTTPException(status_code=500, detail="Não foi possível gerar o post")
+
+# ── Criador de Criativos com IA ───────────────────────────────────────────────
+
+VERTICE_VIDEO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vertice-video")
+VIDEOS_OUTPUT_DIR = os.path.join(VERTICE_VIDEO_DIR, "output")
+os.makedirs(VIDEOS_OUTPUT_DIR, exist_ok=True)
+app.mount("/videos", StaticFiles(directory=VIDEOS_OUTPUT_DIR), name="videos")
+
+render_jobs: dict = {}  # job_id → {status, file, url, error}
+
+CRIATIVO_SYSTEM = """Você é um estrategista sênior de Facebook Ads com 10 anos criando anúncios de alta performance no Brasil.
+
+Sua especialidade:
+1. Analisar o que os CONCORRENTES fazem em cada nicho (hooks genéricos, foco em preço, falta de diferenciação)
+2. Criar criativos DIFERENCIADOS que param o scroll nos primeiros 2 segundos
+3. Adaptar linguagem, dores e resultados para o nicho específico
+
+Você está criando um anúncio em vídeo de 30s para a Vértice Studio — agência de automação com IA para PMEs.
+Serviços: WhatsApp Bot 24h, IA de Vendas, Automação de Marketing, Funil de Leads.
+
+REGRA: Cada anúncio deve parecer feito ESPECIFICAMENTE para o nicho informado, não genérico."""
+
+CRIATIVO_TOOL = {
+    "name": "gerar_criativo_video",
+    "description": "Gera a estrutura completa de um criativo de vídeo para Facebook Ads",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "analise_concorrente": {
+                "type": "string",
+                "description": "O que os concorrentes típicos fazem nesse nicho e quais são suas fraquezas"
+            },
+            "estrategia": {
+                "type": "string",
+                "description": "Ângulo único do anúncio e por que vai se destacar no feed"
+            },
+            "hook": {
+                "type": "array",
+                "description": "Exatamente 2 linhas do hook — deve parar o scroll em 2 segundos",
+                "items": {"type": "string"},
+                "minItems": 2,
+                "maxItems": 2
+            },
+            "pain_lines": {
+                "type": "array",
+                "description": "Exatamente 3 pontos de dor específicos do nicho",
+                "items": {"type": "string"},
+                "minItems": 3,
+                "maxItems": 3
+            },
+            "services": {
+                "type": "array",
+                "description": "Exatamente 4 benefícios da Vértice adaptados ao nicho",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "icon": {"type": "string"},
+                        "label": {"type": "string", "description": "Máximo 25 caracteres"}
+                    },
+                    "required": ["icon", "label"]
+                },
+                "minItems": 4,
+                "maxItems": 4
+            },
+            "stats": {
+                "type": "array",
+                "description": "Exatamente 3 estatísticas de impacto",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "value": {"type": "string"},
+                        "label": {"type": "string"}
+                    },
+                    "required": ["value", "label"]
+                },
+                "minItems": 3,
+                "maxItems": 3
+            },
+            "cases": {
+                "type": "array",
+                "description": "Exatamente 3 cases plausíveis no nicho",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "niche": {"type": "string"},
+                        "result": {"type": "string"}
+                    },
+                    "required": ["name", "niche", "result"]
+                },
+                "minItems": 3,
+                "maxItems": 3
+            },
+            "cta": {
+                "type": "string",
+                "description": "Call to action específico para o nicho (máx 30 chars)"
+            },
+            "urgency": {
+                "type": "string",
+                "description": "Texto de urgência em MAIÚSCULAS (máx 25 chars)"
+            }
+        },
+        "required": ["analise_concorrente", "estrategia", "hook", "pain_lines", "services", "stats", "cases", "cta", "urgency"]
+    }
+}
+
+class CriativoRequest(BaseModel):
+    prompt: str
+
+class RenderRequest(BaseModel):
+    config: dict
+    nome: str = "criativo"
+    formato: str = "1080x1080"
+
+def _executar_render(job_id: str, config: dict, nome: str):
+    """Thread separada: roda o Remotion e atualiza render_jobs quando terminar."""
+    props_path = os.path.join(VERTICE_VIDEO_DIR, f"_props_{job_id}.json")
+    output_name = f"{nome}-{job_id[:8]}.mp4"
+    output_rel  = os.path.join("output", output_name)
+    try:
+        with open(props_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+
+        cmd = f'npx remotion render VerticeAdBrain "{output_rel}" --props "{props_path}"'
+        result = subprocess.run(
+            cmd, cwd=VERTICE_VIDEO_DIR, shell=True,
+            capture_output=True, text=True, timeout=900
+        )
+        if result.returncode == 0:
+            render_jobs[job_id] = {"status": "done", "file": output_name, "url": f"/videos/{output_name}"}
+        else:
+            render_jobs[job_id] = {"status": "error", "error": (result.stderr or result.stdout)[-600:]}
+    except subprocess.TimeoutExpired:
+        render_jobs[job_id] = {"status": "error", "error": "Timeout: render demorou mais de 15 minutos"}
+    except Exception as e:
+        render_jobs[job_id] = {"status": "error", "error": str(e)}
+    finally:
+        try:
+            os.remove(props_path)
+        except Exception:
+            pass
+
+@app.post("/criar-criativo")
+async def criar_criativo(body: CriativoRequest):
+    resposta = client.messages.create(
+        model=MODEL,
+        max_tokens=4096,
+        system=CRIATIVO_SYSTEM,
+        tools=[CRIATIVO_TOOL],
+        tool_choice={"type": "tool", "name": "gerar_criativo_video"},
+        messages=[{"role": "user", "content": f"Crie um criativo de Facebook Ads para a Vértice Studio com base nessa briefing:\n\n{body.prompt}"}],
+    )
+    for b in resposta.content:
+        if b.type == "tool_use" and b.name == "gerar_criativo_video":
+            data = b.input
+            return {
+                "analise": data.get("analise_concorrente", ""),
+                "estrategia": data.get("estrategia", ""),
+                "config": {k: v for k, v in data.items() if k not in ("analise_concorrente", "estrategia")},
+            }
+    raise HTTPException(status_code=500, detail="Não foi possível gerar o criativo")
+
+@app.post("/renderizar-video")
+async def renderizar_video(body: RenderRequest):
+    job_id = str(uuid.uuid4())
+    render_jobs[job_id] = {"status": "running"}
+    t = threading.Thread(target=_executar_render, args=(job_id, body.config, body.nome), daemon=True)
+    t.start()
+    return {"job_id": job_id, "status": "started", "mensagem": "Render iniciado — leva ~8 minutos"}
+
+@app.get("/video-status/{job_id}")
+async def video_status(job_id: str):
+    job = render_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job não encontrado")
+    return job
+
+@app.get("/videos-lista")
+async def listar_videos():
+    try:
+        files = sorted(
+            [f for f in os.listdir(VIDEOS_OUTPUT_DIR) if f.endswith(".mp4")],
+            key=lambda f: os.path.getmtime(os.path.join(VIDEOS_OUTPUT_DIR, f)),
+            reverse=True
+        )
+        return [{"file": f, "url": f"/videos/{f}"} for f in files]
+    except Exception:
+        return []
 
 # ── Endpoints do bot ──────────────────────────────────────────────────────────
 @app.get("/")
