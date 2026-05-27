@@ -272,6 +272,76 @@ def deletar_reuniao(reuniao_id: str):
     salvar_reunioes(novas)
     return {"status": "ok"}
 
+# ── Gerador de posts Instagram ────────────────────────────────────────────────
+IG_SYSTEM = """Você é um Especialista em Social Media, Copywriter de Alta Conversão e Diretor de Arte focado no crescimento de agências digitais. Você cria conteúdo para o Instagram da Vertice Studio (@vertice_studio2.0).
+
+A Vertice Studio é uma agência de automação com IA, marketing digital e soluções para negócios. Opera exclusivamente pelo Instagram no momento. Cada post é vitrine, carta de vendas e prova de autoridade.
+
+Sempre gere conteúdo em Português do Brasil. Tom: profissional, direto, empático e inspirador. Evite termos excessivamente formais."""
+
+IG_TOOL = {
+    "name": "proposta_post",
+    "description": "Retorna a proposta completa e estruturada do post para Instagram",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "formato": {
+                "type": "string",
+                "description": "Formato sugerido: Imagem Única, Carrossel (N slides) ou Reels"
+            },
+            "direcao_arte": {
+                "type": "string",
+                "description": "Descrição detalhada do visual: o que aparece na imagem/vídeo, cores, estilo, tipografia, elementos visuais"
+            },
+            "slides": {
+                "type": "array",
+                "description": "Se for carrossel, lista com o texto de cada slide. Se não for carrossel, lista com 1 elemento descrevendo a imagem.",
+                "items": {"type": "string"}
+            },
+            "copy": {
+                "type": "string",
+                "description": "Legenda completa usando técnicas de copywriting (AIDA ou PAS). Tom profissional, direto, empático e inspirador."
+            },
+            "cta": {
+                "type": "string",
+                "description": "Call to Action claro direcionando para DM no @vertice_studio2.0"
+            },
+            "hashtags": {
+                "type": "array",
+                "description": "10 a 15 hashtags estratégicas misturando termos amplos e específicos de conversão",
+                "items": {"type": "string"}
+            }
+        },
+        "required": ["formato", "direcao_arte", "slides", "copy", "cta", "hashtags"]
+    }
+}
+
+class GerarPostRequest(BaseModel):
+    tema: str
+    posts_referencia: Optional[str] = ""
+
+@app.post("/gerar-post")
+async def gerar_post(body: GerarPostRequest):
+    prompt = f"Crie uma proposta de post para Instagram da Vertice Studio sobre o tema: {body.tema}"
+    if body.posts_referencia:
+        prompt += f"\n\nReferências de posts anteriores para calibrar o tom:\n{body.posts_referencia}"
+
+    resposta = client.messages.create(
+        model=MODEL,
+        max_tokens=4096,
+        system=IG_SYSTEM,
+        thinking={"type": "adaptive"},
+        tools=[IG_TOOL],
+        tool_choice={"type": "tool", "name": "proposta_post"},
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    for b in resposta.content:
+        if b.type == "tool_use" and b.name == "proposta_post":
+            return b.input
+
+    raise HTTPException(status_code=500, detail="Não foi possível gerar o post")
+
 # ── Endpoints do bot ──────────────────────────────────────────────────────────
 @app.get("/")
 def health():
