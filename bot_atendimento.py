@@ -211,6 +211,9 @@ TOOLS = [
 LEADS_FILE    = os.getenv("LEADS_FILE", "leads.json")
 PERFIS_FILE   = os.getenv("PERFIS_FILE", "perfis.json")
 ESCALAS_FILE  = os.getenv("ESCALAS_FILE", "escalas.json")
+CLIENTES_FILE = os.getenv("CLIENTES_FILE", "clientes.json")
+CONTEUDO_FILE = os.getenv("CONTEUDO_FILE", "conteudo.json")
+OWNER_PHONE   = os.getenv("OWNER_PHONE", "")
 
 def _carregar_json(path: str) -> list:
     if not os.path.exists(path): return []
@@ -256,6 +259,16 @@ def processar_escala(dados: dict) -> dict:
     escalas.append(registro)
     _salvar_json(ESCALAS_FILE, escalas)
     print(f"🚨 ESCALA HUMANO: {dados.get('nome_cliente')} | {dados.get('urgencia').upper()} | {dados.get('motivo')}")
+    if OWNER_PHONE:
+        urgencia = dados.get("urgencia", "").upper()
+        emoji = "🔴" if urgencia == "ALTA" else "🟡" if urgencia == "MEDIA" else "🟢"
+        alerta = (f"{emoji} *LEAD PARA ATENDIMENTO HUMANO*\n\n"
+                  f"👤 *{dados.get('nome_cliente')}*\n"
+                  f"📞 {dados.get('telefone')}\n"
+                  f"⚡ Urgência: {urgencia}\n"
+                  f"📝 {dados.get('motivo')}\n\n"
+                  f"Responda o quanto antes! 🚀")
+        enviar_whatsapp(OWNER_PHONE, alerta)
     return {"sucesso": True, "mensagem": f"Conversa de {dados.get('nome_cliente')} escalada para atendimento humano"}
 
 # ── Armazenamento de reuniões ─────────────────────────────────────────────────
@@ -1033,6 +1046,233 @@ async def facebook_agente(body: FbAgenteRequest):
         messages=[{"role": "user", "content": f"Analise estes dados da conta de Facebook Ads:\n\n{dados_str}"}],
     )
     return {"resultado": msg.content[0].text, "skill": body.skill}
+
+# ── CRM de Leads ─────────────────────────────────────────────────────────────
+import datetime as _dt
+
+class LeadUpdate(BaseModel):
+    estagio: Optional[str] = None
+    score: Optional[str] = None
+    notas: Optional[str] = None
+    telefone: Optional[str] = None
+
+@app.get("/leads")
+async def listar_leads(score: Optional[str] = None, estagio: Optional[str] = None):
+    leads = _carregar_json(LEADS_FILE)
+    if score: leads = [l for l in leads if l.get("score") == score]
+    if estagio: leads = [l for l in leads if l.get("estagio", "novo") == estagio]
+    return sorted(leads, key=lambda l: l.get("criado_em", ""), reverse=True)
+
+@app.put("/leads/{lead_id}")
+async def atualizar_lead(lead_id: str, body: LeadUpdate):
+    leads = _carregar_json(LEADS_FILE)
+    for l in leads:
+        if l["id"] == lead_id:
+            if body.estagio is not None: l["estagio"] = body.estagio
+            if body.score is not None: l["score"] = body.score
+            if body.notas is not None: l["notas"] = body.notas
+            if body.telefone is not None: l["telefone"] = body.telefone
+            l["atualizado_em"] = str(_dt.datetime.now())
+            break
+    _salvar_json(LEADS_FILE, leads)
+    return {"sucesso": True}
+
+@app.delete("/leads/{lead_id}")
+async def deletar_lead(lead_id: str):
+    leads = [l for l in _carregar_json(LEADS_FILE) if l["id"] != lead_id]
+    _salvar_json(LEADS_FILE, leads)
+    return {"sucesso": True}
+
+@app.get("/leads/stats")
+async def stats_leads():
+    leads = _carregar_json(LEADS_FILE)
+    hoje = _dt.date.today().isoformat()
+    semana = (_dt.date.today() - _dt.timedelta(days=7)).isoformat()
+    return {
+        "total": len(leads),
+        "quente": sum(1 for l in leads if l.get("score") == "quente"),
+        "morno": sum(1 for l in leads if l.get("score") == "morno"),
+        "frio": sum(1 for l in leads if l.get("score") == "frio"),
+        "esta_semana": sum(1 for l in leads if l.get("criado_em", "")[:10] >= semana),
+        "por_estagio": {
+            e: sum(1 for l in leads if l.get("estagio", "novo") == e)
+            for e in ["novo", "qualificado", "proposta", "reuniao", "fechado", "perdido"]
+        }
+    }
+
+# ── Clientes Ativos ───────────────────────────────────────────────────────────
+class ClienteCreate(BaseModel):
+    nome: str
+    empresa: Optional[str] = ""
+    nicho: Optional[str] = ""
+    telefone: Optional[str] = ""
+    email: Optional[str] = ""
+    plano: Optional[str] = ""
+    valor_mensal: Optional[float] = 0
+    data_inicio: Optional[str] = ""
+    status: Optional[str] = "ativo"
+    notas: Optional[str] = ""
+
+class ClienteUpdate(BaseModel):
+    nome: Optional[str] = None
+    empresa: Optional[str] = None
+    nicho: Optional[str] = None
+    telefone: Optional[str] = None
+    email: Optional[str] = None
+    plano: Optional[str] = None
+    valor_mensal: Optional[float] = None
+    data_inicio: Optional[str] = None
+    status: Optional[str] = None
+    notas: Optional[str] = None
+
+@app.get("/clientes-ativos")
+async def listar_clientes(status: Optional[str] = None):
+    clientes = _carregar_json(CLIENTES_FILE)
+    if status: clientes = [c for c in clientes if c.get("status") == status]
+    return sorted(clientes, key=lambda c: c.get("nome", ""))
+
+@app.post("/clientes-ativos")
+async def criar_cliente(body: ClienteCreate):
+    clientes = _carregar_json(CLIENTES_FILE)
+    novo = {"id": str(uuid.uuid4()), "criado_em": str(_dt.datetime.now()), **body.dict()}
+    clientes.append(novo)
+    _salvar_json(CLIENTES_FILE, clientes)
+    return novo
+
+@app.put("/clientes-ativos/{cliente_id}")
+async def atualizar_cliente(cliente_id: str, body: ClienteUpdate):
+    clientes = _carregar_json(CLIENTES_FILE)
+    for c in clientes:
+        if c["id"] == cliente_id:
+            for k, v in body.dict(exclude_none=True).items():
+                c[k] = v
+            c["atualizado_em"] = str(_dt.datetime.now())
+            break
+    _salvar_json(CLIENTES_FILE, clientes)
+    return {"sucesso": True}
+
+@app.delete("/clientes-ativos/{cliente_id}")
+async def deletar_cliente(cliente_id: str):
+    clientes = [c for c in _carregar_json(CLIENTES_FILE) if c["id"] != cliente_id]
+    _salvar_json(CLIENTES_FILE, clientes)
+    return {"sucesso": True}
+
+# ── Calendário de Conteúdo ────────────────────────────────────────────────────
+class ConteudoCreate(BaseModel):
+    titulo: str
+    tipo: Optional[str] = "post"
+    data_publicacao: Optional[str] = ""
+    status: Optional[str] = "rascunho"
+    caption: Optional[str] = ""
+    hashtags: Optional[str] = ""
+    cliente: Optional[str] = ""
+    observacoes: Optional[str] = ""
+
+class ConteudoUpdate(BaseModel):
+    titulo: Optional[str] = None
+    tipo: Optional[str] = None
+    data_publicacao: Optional[str] = None
+    status: Optional[str] = None
+    caption: Optional[str] = None
+    hashtags: Optional[str] = None
+    cliente: Optional[str] = None
+    observacoes: Optional[str] = None
+
+@app.get("/conteudo")
+async def listar_conteudo(status: Optional[str] = None, mes: Optional[str] = None):
+    items = _carregar_json(CONTEUDO_FILE)
+    if status: items = [i for i in items if i.get("status") == status]
+    if mes: items = [i for i in items if i.get("data_publicacao", "")[:7] == mes]
+    return sorted(items, key=lambda i: i.get("data_publicacao", ""))
+
+@app.post("/conteudo")
+async def criar_conteudo(body: ConteudoCreate):
+    items = _carregar_json(CONTEUDO_FILE)
+    novo = {"id": str(uuid.uuid4()), "criado_em": str(_dt.datetime.now()), **body.dict()}
+    items.append(novo)
+    _salvar_json(CONTEUDO_FILE, items)
+    return novo
+
+@app.put("/conteudo/{item_id}")
+async def atualizar_conteudo(item_id: str, body: ConteudoUpdate):
+    items = _carregar_json(CONTEUDO_FILE)
+    for i in items:
+        if i["id"] == item_id:
+            for k, v in body.dict(exclude_none=True).items():
+                i[k] = v
+            break
+    _salvar_json(CONTEUDO_FILE, items)
+    return {"sucesso": True}
+
+@app.delete("/conteudo/{item_id}")
+async def deletar_conteudo(item_id: str):
+    items = [i for i in _carregar_json(CONTEUDO_FILE) if i["id"] != item_id]
+    _salvar_json(CONTEUDO_FILE, items)
+    return {"sucesso": True}
+
+# ── Follow-up Automático ──────────────────────────────────────────────────────
+@app.post("/follow-up")
+async def executar_followup():
+    leads = _carregar_json(LEADS_FILE)
+    limite = (_dt.date.today() - _dt.timedelta(days=3)).isoformat()
+    frios = [l for l in leads if l.get("score") in ("morno", "quente")
+             and l.get("estagio", "novo") not in ("fechado", "perdido", "reuniao")
+             and l.get("criado_em", "")[:10] <= limite
+             and l.get("telefone")]
+    if not frios:
+        return {"enviados": 0, "mensagem": "Nenhum lead elegível para follow-up"}
+
+    client_interno = anthropic.Anthropic(api_key=API_KEY)
+    enviados = []
+    for lead in frios[:5]:
+        msg_obj = client_interno.messages.create(
+            model=MODEL, max_tokens=300,
+            system="Você é um vendedor da Vértice Studio com a mentalidade de Flávio Augusto. Escreva uma mensagem curta de reativação de WhatsApp (máx 4 linhas) para um lead que não respondeu há alguns dias. Seja direto, humano, sem soar desesperado. Crie senso de oportunidade.",
+            messages=[{"role": "user", "content": f"Lead: {lead.get('nome_cliente')} | Nicho: {lead.get('nicho')} | Dor: {lead.get('dor_principal')}"}]
+        )
+        texto = msg_obj.content[0].text
+        enviar_whatsapp(lead["telefone"], texto)
+        lead["ultimo_followup"] = str(_dt.datetime.now())
+        enviados.append({"lead": lead.get("nome_cliente"), "telefone": lead.get("telefone")})
+
+    _salvar_json(LEADS_FILE, leads)
+    return {"enviados": len(enviados), "leads": enviados}
+
+# ── Relatório Semanal ─────────────────────────────────────────────────────────
+@app.get("/relatorio-semanal")
+async def relatorio_semanal(enviar_whatsapp_owner: bool = False):
+    leads = _carregar_json(LEADS_FILE)
+    clientes = _carregar_json(CLIENTES_FILE)
+    reunioes = carregar_reunioes()
+    semana = (_dt.date.today() - _dt.timedelta(days=7)).isoformat()
+
+    leads_semana = [l for l in leads if l.get("criado_em", "")[:10] >= semana]
+    reunioes_semana = [r for r in reunioes if r.get("date", "")[:10] >= semana]
+    clientes_ativos = [c for c in clientes if c.get("status") == "ativo"]
+    mrr = sum(c.get("valor_mensal", 0) for c in clientes_ativos)
+
+    dados = {
+        "periodo": f"{semana} a {_dt.date.today().isoformat()}",
+        "leads_novos": len(leads_semana),
+        "leads_quentes": sum(1 for l in leads_semana if l.get("score") == "quente"),
+        "reunioes_agendadas": len(reunioes_semana),
+        "clientes_ativos": len(clientes_ativos),
+        "mrr": mrr,
+        "pipeline": {e: sum(1 for l in leads if l.get("estagio","novo")==e) for e in ["novo","qualificado","proposta","reuniao","fechado"]},
+    }
+
+    client_interno = anthropic.Anthropic(api_key=API_KEY)
+    msg_obj = client_interno.messages.create(
+        model=MODEL, max_tokens=1200,
+        system="Você é o analista de negócios da Vértice Studio com mentalidade de Flávio Augusto. Gere um relatório semanal executivo, direto e motivador. Use emojis, seja objetivo, destaque conquistas e aponte o foco da próxima semana.",
+        messages=[{"role": "user", "content": f"Dados da semana:\n{json.dumps(dados, ensure_ascii=False, indent=2)}\n\nGere o relatório semanal completo."}]
+    )
+    relatorio_texto = msg_obj.content[0].text
+
+    if enviar_whatsapp_owner and OWNER_PHONE:
+        enviar_whatsapp(OWNER_PHONE, relatorio_texto)
+
+    return {"relatorio": relatorio_texto, "dados": dados}
 
 # ── Endpoints do bot ──────────────────────────────────────────────────────────
 @app.get("/")
