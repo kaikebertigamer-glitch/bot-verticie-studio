@@ -330,7 +330,6 @@ async def gerar_post(body: GerarPostRequest):
         model=MODEL,
         max_tokens=4096,
         system=IG_SYSTEM,
-        thinking={"type": "adaptive"},
         tools=[IG_TOOL],
         tool_choice={"type": "tool", "name": "proposta_post"},
         messages=[{"role": "user", "content": prompt}],
