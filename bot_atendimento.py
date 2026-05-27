@@ -532,6 +532,139 @@ async def listar_videos():
     except Exception:
         return []
 
+# ── Geração de Vídeo por IA (Runway Gen-4 + Google Veo 3) ────────────────────
+import time as _time
+
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+RUNWAY_API_KEY = os.getenv("RUNWAY_API_KEY", "")
+
+ia_video_jobs: dict = {}
+
+class GerarVideoIARequest(BaseModel):
+    prompt: str
+    provider: str = "runway"   # "runway" | "veo3"
+    formato: str = "1080x1920" # "1080x1080" | "1080x1920"
+    duracao: int = 10          # segundos (5 ou 10 para Runway, 8 para Veo 3)
+
+def _gerar_runway(job_id: str, prompt: str, formato: str, duracao: int):
+    """Thread: gera vídeo via Runway Gen-4 e salva em VIDEOS_OUTPUT_DIR."""
+    try:
+        import runwayml
+        if not RUNWAY_API_KEY:
+            ia_video_jobs[job_id] = {"status": "error", "error": "RUNWAY_API_KEY não configurada"}
+            return
+
+        ratio_map = {"1080x1080": "1080:1080", "1080x1920": "1080:1920", "1920x1080": "1920:1080"}
+        ratio = ratio_map.get(formato, "1080:1920")
+        dur = 5 if duracao <= 5 else 10
+
+        rw = runwayml.RunwayML(api_key=RUNWAY_API_KEY)
+        task = rw.text_to_video.create(
+            model="gen4_turbo",
+            prompt_text=prompt,
+            ratio=ratio,
+            duration=dur,
+        )
+        task_id = task.id
+        ia_video_jobs[job_id]["task_id"] = task_id
+
+        # Polling
+        while True:
+            task = rw.tasks.retrieve(task_id)
+            if task.status in ("SUCCEEDED", "FAILED", "CANCELLED"):
+                break
+            _time.sleep(8)
+
+        if task.status == "SUCCEEDED" and task.output:
+            video_url = task.output[0]
+            output_name = f"runway-{job_id[:8]}.mp4"
+            output_path = os.path.join(VIDEOS_OUTPUT_DIR, output_name)
+            r = requests.get(video_url, timeout=120)
+            with open(output_path, "wb") as f:
+                f.write(r.content)
+            ia_video_jobs[job_id] = {"status": "done", "file": output_name, "url": f"/videos/{output_name}", "provider": "Runway Gen-4"}
+        else:
+            ia_video_jobs[job_id] = {"status": "error", "error": f"Runway: {task.status}"}
+    except Exception as e:
+        ia_video_jobs[job_id] = {"status": "error", "error": str(e)}
+
+def _gerar_veo3(job_id: str, prompt: str, formato: str):
+    """Thread: gera vídeo via Google Veo 3 e salva em VIDEOS_OUTPUT_DIR."""
+    try:
+        from google import genai as google_genai
+        from google.genai import types as genai_types
+        if not GOOGLE_API_KEY:
+            ia_video_jobs[job_id] = {"status": "error", "error": "GOOGLE_API_KEY não configurada"}
+            return
+
+        aspect_map = {"1080x1080": "1:1", "1080x1920": "9:16", "1920x1080": "16:9"}
+        aspect = aspect_map.get(formato, "9:16")
+
+        gc = google_genai.Client(api_key=GOOGLE_API_KEY)
+        operation = gc.models.generate_videos(
+            model="veo-3.0-generate-preview",
+            prompt=prompt,
+            config=genai_types.GenerateVideosConfig(
+                aspect_ratio=aspect,
+                duration_seconds=8,
+                number_of_videos=1,
+                enhance_prompt=True,
+            ),
+        )
+
+        # Polling até terminar
+        while not operation.done:
+            _time.sleep(15)
+            operation = gc.operations.get(operation)
+
+        if operation.error:
+            ia_video_jobs[job_id] = {"status": "error", "error": str(operation.error)}
+            return
+
+        videos = (operation.result or operation.response or {})
+        generated = getattr(videos, "generated_videos", None) or []
+        if not generated:
+            ia_video_jobs[job_id] = {"status": "error", "error": "Veo 3: nenhum vídeo retornado"}
+            return
+
+        vid = generated[0].video
+        output_name = f"veo3-{job_id[:8]}.mp4"
+        output_path = os.path.join(VIDEOS_OUTPUT_DIR, output_name)
+
+        if vid.video_bytes:
+            with open(output_path, "wb") as f:
+                f.write(vid.video_bytes)
+        elif vid.uri:
+            r = requests.get(vid.uri, timeout=180)
+            with open(output_path, "wb") as f:
+                f.write(r.content)
+        else:
+            ia_video_jobs[job_id] = {"status": "error", "error": "Veo 3: sem URI nem bytes no vídeo"}
+            return
+
+        ia_video_jobs[job_id] = {"status": "done", "file": output_name, "url": f"/videos/{output_name}", "provider": "Google Veo 3"}
+    except Exception as e:
+        ia_video_jobs[job_id] = {"status": "error", "error": str(e)}
+
+@app.post("/gerar-video-ia")
+async def gerar_video_ia(body: GerarVideoIARequest):
+    job_id = str(uuid.uuid4())
+    ia_video_jobs[job_id] = {"status": "running", "provider": body.provider}
+    if body.provider == "veo3":
+        t = threading.Thread(target=_gerar_veo3, args=(job_id, body.prompt, body.formato), daemon=True)
+    else:
+        t = threading.Thread(target=_gerar_runway, args=(job_id, body.prompt, body.formato, body.duracao), daemon=True)
+    t.start()
+    estimativa = "~1-2 minutos" if body.provider == "runway" else "~3-5 minutos"
+    return {"job_id": job_id, "status": "started", "estimativa": estimativa, "provider": body.provider}
+
+@app.get("/video-ia-status/{job_id}")
+async def video_ia_status(job_id: str):
+    job = ia_video_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job não encontrado")
+    return job
+
 # ── Endpoints do bot ──────────────────────────────────────────────────────────
 @app.get("/")
 def health():
