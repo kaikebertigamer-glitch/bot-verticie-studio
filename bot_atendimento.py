@@ -36,76 +36,227 @@ FB_BASE           = "https://graph.facebook.com/v21.0"
 MODEL = "claude-opus-4-7"
 
 # ── System prompt ─────────────────────────────────────────────────────────────
-SYSTEM_PROMPT = """Identidade e Papel
-Você é o assistente de atendimento oficial da Vertice Studio no WhatsApp. Seu objetivo é recepcionar potenciais clientes, tirar dúvidas iniciais de forma extremamente humana e natural, e, o mais rápido possível, conduzir a conversa para o agendamento de uma reunião de alinhamento com a equipe.
+SYSTEM_PROMPT = """# IDENTIDADE E MENTALIDADE
 
-Tom de Voz e Personalidade
+Você é o assistente oficial da Vértice Studio no WhatsApp — mas pensa e age como o próprio dono da empresa, com a mentalidade de Flávio Augusto: direto, confiante, focado em valor e em fechamento.
 
-Humano e Empático: Você não fala como um robô. Use uma linguagem leve, cordial e direta, típica de uma conversa de negócios descontraída no WhatsApp no Brasil (ex: "Olá! Tudo bem?", "Entendi perfeitamente", "Bora marcar um papo?").
+Flávio Augusto ensina: "Não existe cliente que não quer, existe cliente que ainda não viu o valor." Sua missão é fazer o cliente enxergar o valor antes de pensar no preço.
 
-Conciso: Mensagens curtas. Ninguém gosta de ler blocos de texto gigantes no WhatsApp. Se precisar explicar algo complexo, divida em duas ou três mensagens curtas.
+Você é um VENDEDOR-DONO. Não é atendente, não é robô. É alguém que acredita 100% no que a Vértice entrega e fala com a autoridade de quem já transformou negócios.
 
-Uso de Emojis: Use emojis de forma estratégica para dar vida ao texto, mas sem exageros (🚀, 🤝, 💡, 👇, 😊).
+---
 
-Proibido: Nunca use termos excessivamente formais (ex: "Prezado", "Compreendo", "Destarte") e evite jargões técnicos confusos a menos que o cliente os utilize primeiro.
+# FILOSOFIA DE VENDAS (MENTALIDADE FLÁVIO AUGUSTO)
 
-Informações da Empresa
+1. GERAÇÃO DE VALOR PRIMEIRO — Antes de vender qualquer coisa, mostre o que o cliente está perdendo sem a solução. "O custo de não agir é maior que o custo de contratar."
 
-Nome: Vertice Studio.
+2. DONO DO PROBLEMA — Assuma o problema do cliente como seu. "Eu entendo exatamente o que você está passando. Isso é solucionável."
 
-O que faz: Agência focada em soluções digitais, marketing e inovação para negócios.
+3. PERGUNTAS INTELIGENTES — Faça perguntas que levam o cliente a perceber a própria dor. Não empurre — conduza.
 
-Portfólio/Links: Não possuímos site. Para ver nossos trabalhos e conhecer mais sobre a agência, você deve sempre direcionar o cliente para o nosso Instagram: @vertice_studio2.0.
+4. URGÊNCIA REAL — Crie senso de urgência baseado em oportunidade perdida, não em pressão. "Enquanto você pensa, um concorrente já está no ar com isso."
 
-Fluxo de Atendimento e Agendamento
+5. FECHAMENTO DIRETO — Quando chegar a hora, peça a reunião ou o próximo passo com confiança. Sem rodeios. "Bora marcar uma call de 20 minutos ainda essa semana?"
 
-Recepção: Cumprimente de forma amigável, pergunte o nome da pessoa (se já não souber) e como a Vertice pode ajudar o negócio dela a crescer.
+6. OBJEÇÃO = OPORTUNIDADE — Toda objeção é uma pergunta disfarçada. "Tá caro" = "Ainda não vi o valor." Reforce o ROI, não reduza o preço.
 
-Sondagem Rápida: Faça no máximo UMA pergunta por vez para entender o nicho do cliente ou qual o principal desafio dele hoje.
+7. PENSE COMO EMPRESÁRIO — Você quer o crescimento do cliente tanto quanto o seu. A Vértice não vende serviço, vende resultado.
 
-O Gancho (Call to Action): Assim que entender a dor do cliente, valide-a e sugira a reunião. Exemplo: "Legal, [Nome]! Nós conseguimos te ajudar com isso. O ideal agora seria a gente bater um papo rápido de 15 a 20 minutinhos em uma call para eu entender melhor seu cenário e te mostrar como a Vertice atua."
+---
 
-Marcação: Ofereça duas opções de horários próximos ou pergunte a preferência do cliente (ex: "Você prefere na parte da manhã ou da tarde?").
+# TOM DE VOZ
 
-AGENDAMENTO NO SISTEMA: Quando o cliente confirmar explicitamente uma data e horário específicos para a reunião, você DEVE usar a ferramenta agendar_reuniao para registrar no sistema. Só use a ferramenta após confirmação real do cliente — não use antecipadamente. Após agendar, confirme ao cliente com a data/horário que foi salvo.
+- Humano, direto e sem frescura — como um sócio falando, não um vendedor pedindo
+- Mensagens CURTAS no WhatsApp. Máximo 3-4 linhas por mensagem
+- Emojis estratégicos: 🚀 💡 🎯 🤝 ✅ (sem exagero)
+- Zero formalidade: nada de "Prezado", "Compreendo", "Destarte"
+- Se precisar explicar algo longo, quebre em 2-3 mensagens menores
 
-Regras de Segurança
+---
 
-Nunca prometa preços fixos ou prazos sem que isso tenha sido definido em reunião.
+# INFORMAÇÕES DA EMPRESA
 
-Se o cliente fizer uma pergunta muito complexa que você não sabe responder, diga: "Essa é uma ótima pergunta! Para te dar a resposta mais precisa sobre isso, o ideal é abordarmos na nossa reunião. Como está sua agenda para amanhã?"
+- Nome: Vértice Studio
+- O que faz: Agência de automação com IA, marketing digital e inovação para negócios
+- Instagram (portfólio): @vertice_studio2.0
+- Sem site oficial — direcione sempre para o Instagram
 
-Sempre responda no idioma em que o cliente falar (priorizando Português do Brasil)."""
+---
 
-# ── Ferramenta de agendamento ─────────────────────────────────────────────────
+# FLUXO DE ATENDIMENTO
+
+1. RECEPÇÃO — Cumprimente com energia e pergunte o nome e o negócio da pessoa
+2. DIAGNÓSTICO — 1 pergunta por vez para entender a dor principal do negócio
+3. ESPELHO DA DOR — Repita a dor com suas palavras para o cliente sentir que foi entendido
+4. GANCHO DE VALOR — Mostre brevemente como a Vértice resolve exatamente isso
+5. CALL TO ACTION — Convide para a reunião com confiança e duas opções de horário
+6. AGENDAMENTO — Use a ferramenta agendar_reuniao quando o cliente confirmar data/hora
+
+---
+
+# FERRAMENTAS DISPONÍVEIS
+
+Use as ferramentas nos momentos certos, sem avisar o cliente:
+
+- agendar_reuniao: quando cliente confirmar data e hora da reunião
+- qualificar_lead: use após entender o nicho e a dor — classifique o lead para a equipe
+- gerar_proposta: quando o cliente pedir valores ou proposta — gere um texto personalizado e envie
+- detectar_intencao: use quando a mensagem for ambígua — detecte o que o cliente realmente quer
+- registrar_perfil: use quando souber nicho, orçamento ou dor principal do cliente
+- escalar_humano: use quando a conversa exigir negociação avançada ou cliente VIP
+
+---
+
+# REGRAS
+
+- Nunca prometa preços ou prazos fixos — isso é definido na reunião
+- Perguntas complexas: "Ótima pergunta! A resposta mais precisa pra isso a gente cobre na call. Quando você tem 20 minutos essa semana?"
+- Sempre responda no idioma do cliente (prioridade: português do Brasil)
+- Após agendar, sempre confirme data e hora ao cliente"""
+
+# ── Ferramentas do agente ─────────────────────────────────────────────────────
 TOOLS = [
     {
         "name": "agendar_reuniao",
-        "description": "Salva uma reunião confirmada no sistema da Vértice Studio. Use somente quando o cliente tiver confirmado explicitamente nome, data e horário.",
+        "description": "Salva uma reunião confirmada no sistema da Vértice Studio. Use somente quando o cliente confirmar nome, data e horário.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "nome_cliente": {
-                    "type": "string",
-                    "description": "Nome do cliente ou lead"
-                },
-                "data": {
-                    "type": "string",
-                    "description": "Data da reunião no formato YYYY-MM-DD (ex: 2025-06-15)"
-                },
-                "horario": {
-                    "type": "string",
-                    "description": "Horário no formato HH:MM (ex: 14:30)"
-                },
-                "notas": {
-                    "type": "string",
-                    "description": "Resumo do nicho e dores do cliente para a equipe"
-                }
+                "nome_cliente": {"type": "string", "description": "Nome do cliente"},
+                "data": {"type": "string", "description": "Data no formato YYYY-MM-DD"},
+                "horario": {"type": "string", "description": "Horário no formato HH:MM"},
+                "notas": {"type": "string", "description": "Resumo do nicho e dores do cliente"}
             },
             "required": ["nome_cliente", "data", "horario"]
         }
+    },
+    {
+        "name": "qualificar_lead",
+        "description": "Classifica o lead com base na conversa. Use após entender o nicho e a dor do cliente. Registra o score para a equipe de vendas.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "nome_cliente": {"type": "string", "description": "Nome do cliente"},
+                "score": {"type": "string", "enum": ["quente", "morno", "frio"], "description": "Temperatura do lead"},
+                "nicho": {"type": "string", "description": "Segmento de mercado do cliente"},
+                "dor_principal": {"type": "string", "description": "Principal problema que o cliente quer resolver"},
+                "orcamento_estimado": {"type": "string", "description": "Estimativa de orçamento se mencionado, senão 'não informado'"},
+                "observacoes": {"type": "string", "description": "Observações relevantes sobre o lead"}
+            },
+            "required": ["nome_cliente", "score", "nicho", "dor_principal"]
+        }
+    },
+    {
+        "name": "gerar_proposta",
+        "description": "Gera uma proposta personalizada baseada no perfil do cliente e envia no WhatsApp. Use quando o cliente pedir valores ou proposta.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "nome_cliente": {"type": "string", "description": "Nome do cliente"},
+                "nicho": {"type": "string", "description": "Segmento de mercado"},
+                "dor_principal": {"type": "string", "description": "Problema principal a resolver"},
+                "solucoes_sugeridas": {"type": "string", "description": "Serviços da Vértice relevantes para o caso"},
+                "telefone": {"type": "string", "description": "Telefone do cliente para enviar a proposta"}
+            },
+            "required": ["nome_cliente", "nicho", "dor_principal", "solucoes_sugeridas", "telefone"]
+        }
+    },
+    {
+        "name": "detectar_intencao",
+        "description": "Detecta a intenção real do cliente quando a mensagem for ambígua. Ajuda o agente a escolher a melhor abordagem.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "mensagem": {"type": "string", "description": "Mensagem do cliente a ser analisada"},
+                "intencao": {"type": "string", "enum": ["preco", "portfolio", "reuniao", "suporte", "parceria", "curiosidade", "outro"], "description": "Intenção detectada"},
+                "confianca": {"type": "string", "enum": ["alta", "media", "baixa"], "description": "Nível de confiança na detecção"}
+            },
+            "required": ["mensagem", "intencao", "confianca"]
+        }
+    },
+    {
+        "name": "registrar_perfil",
+        "description": "Salva o perfil completo do cliente para contextualizar futuras interações e passar para a equipe.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "nome_cliente": {"type": "string"},
+                "telefone": {"type": "string"},
+                "nicho": {"type": "string"},
+                "empresa": {"type": "string", "description": "Nome da empresa se informado"},
+                "dor_principal": {"type": "string"},
+                "orcamento": {"type": "string"},
+                "urgencia": {"type": "string", "enum": ["imediata", "curto_prazo", "longo_prazo", "explorando"]}
+            },
+            "required": ["nome_cliente", "telefone", "nicho", "dor_principal"]
+        }
+    },
+    {
+        "name": "escalar_humano",
+        "description": "Sinaliza que a conversa precisa de atendimento humano — cliente VIP, negociação complexa ou situação sensível.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "nome_cliente": {"type": "string"},
+                "telefone": {"type": "string"},
+                "motivo": {"type": "string", "description": "Por que precisa de atendimento humano"},
+                "urgencia": {"type": "string", "enum": ["alta", "media", "baixa"]}
+            },
+            "required": ["nome_cliente", "telefone", "motivo", "urgencia"]
+        }
     }
 ]
+
+# ── Armazenamento de dados ────────────────────────────────────────────────────
+LEADS_FILE    = os.getenv("LEADS_FILE", "leads.json")
+PERFIS_FILE   = os.getenv("PERFIS_FILE", "perfis.json")
+ESCALAS_FILE  = os.getenv("ESCALAS_FILE", "escalas.json")
+
+def _carregar_json(path: str) -> list:
+    if not os.path.exists(path): return []
+    try:
+        with open(path, "r", encoding="utf-8") as f: return json.load(f)
+    except Exception: return []
+
+def _salvar_json(path: str, dados: list) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(dados, f, ensure_ascii=False, indent=2)
+
+def processar_qualificacao(dados: dict) -> dict:
+    leads = _carregar_json(LEADS_FILE)
+    registro = {"id": str(uuid.uuid4()), **dados, "criado_em": str(__import__("datetime").datetime.now())}
+    leads.append(registro)
+    _salvar_json(LEADS_FILE, leads)
+    print(f"🎯 Lead qualificado: {dados.get('nome_cliente')} | {dados.get('score').upper()}")
+    return {"sucesso": True, "score": dados.get("score"), "mensagem": f"Lead {dados.get('nome_cliente')} classificado como {dados.get('score')}"}
+
+def processar_proposta(dados: dict) -> dict:
+    client_interno = anthropic.Anthropic(api_key=API_KEY)
+    msg = client_interno.messages.create(
+        model=MODEL,
+        max_tokens=800,
+        system="Você é um copywriter especialista em propostas comerciais para agências digitais. Escreva propostas curtas, diretas e persuasivas no estilo WhatsApp — sem tabelas, sem jargões. Máximo 15 linhas.",
+        messages=[{"role": "user", "content": f"Crie uma proposta personalizada para:\nCliente: {dados['nome_cliente']}\nNicho: {dados['nicho']}\nDor: {dados['dor_principal']}\nSoluções: {dados['solucoes_sugeridas']}\n\nA proposta deve ter: abertura com espelho da dor, solução específica da Vértice, resultado esperado, e CTA para fechar reunião."}]
+    )
+    texto_proposta = msg.content[0].text
+    enviar_whatsapp(dados["telefone"], texto_proposta)
+    return {"sucesso": True, "mensagem": "Proposta enviada via WhatsApp", "proposta": texto_proposta}
+
+def processar_perfil(dados: dict) -> dict:
+    perfis = _carregar_json(PERFIS_FILE)
+    registro = {"id": str(uuid.uuid4()), **dados, "criado_em": str(__import__("datetime").datetime.now())}
+    perfis.append(registro)
+    _salvar_json(PERFIS_FILE, perfis)
+    print(f"👤 Perfil registrado: {dados.get('nome_cliente')}")
+    return {"sucesso": True, "mensagem": f"Perfil de {dados.get('nome_cliente')} salvo"}
+
+def processar_escala(dados: dict) -> dict:
+    escalas = _carregar_json(ESCALAS_FILE)
+    registro = {"id": str(uuid.uuid4()), **dados, "criado_em": str(__import__("datetime").datetime.now())}
+    escalas.append(registro)
+    _salvar_json(ESCALAS_FILE, escalas)
+    print(f"🚨 ESCALA HUMANO: {dados.get('nome_cliente')} | {dados.get('urgencia').upper()} | {dados.get('motivo')}")
+    return {"sucesso": True, "mensagem": f"Conversa de {dados.get('nome_cliente')} escalada para atendimento humano"}
 
 # ── Armazenamento de reuniões ─────────────────────────────────────────────────
 def carregar_reunioes() -> list:
@@ -183,13 +334,23 @@ def gerar_resposta(telefone: str, mensagem: str) -> str:
         resultados = []
         for b in resposta.content:
             if b.type == "tool_use":
+                inp = b.input
                 if b.name == "agendar_reuniao":
                     resultado = processar_agendamento(
-                        b.input.get("nome_cliente", ""),
-                        b.input.get("data", ""),
-                        b.input.get("horario", ""),
-                        b.input.get("notas", "")
+                        inp.get("nome_cliente", ""), inp.get("data", ""),
+                        inp.get("horario", ""), inp.get("notas", "")
                     )
+                elif b.name == "qualificar_lead":
+                    resultado = processar_qualificacao(inp)
+                elif b.name == "gerar_proposta":
+                    resultado = processar_proposta(inp)
+                elif b.name == "detectar_intencao":
+                    print(f"🔍 Intenção detectada: {inp.get('intencao')} (confiança: {inp.get('confianca')})")
+                    resultado = {"intencao": inp.get("intencao"), "confianca": inp.get("confianca")}
+                elif b.name == "registrar_perfil":
+                    resultado = processar_perfil(inp)
+                elif b.name == "escalar_humano":
+                    resultado = processar_escala(inp)
                 else:
                     resultado = {"erro": f"Ferramenta {b.name} desconhecida"}
 
