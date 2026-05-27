@@ -1275,6 +1275,340 @@ async def relatorio_semanal(enviar_whatsapp_owner: bool = False):
     return {"relatorio": relatorio_texto, "dados": dados}
 
 # ── Endpoints do bot ──────────────────────────────────────────────────────────
+class ChatMsg(BaseModel):
+    message: str
+    session_id: str = "widget"
+    history: list = []
+
+CHAT_SYSTEM = """Você é o assistente virtual da Vértice Studio — agência de automação com IA.
+
+Seja direto, amigável e focado em valor. Responda em português brasileiro. Máximo 3 parágrafos curtos.
+
+Sobre a Vértice Studio:
+- Automação com IA para negócios: chatbots WhatsApp, gestão de tráfego pago, criativos automatizados
+- Atende PMEs que querem crescer mais rápido
+- Planos a partir de R$ 1.500/mês
+- Para orçamento: convide para uma call gratuita de 20 minutos
+
+Se o visitante perguntar sobre preços, convide para falar com a equipe no WhatsApp: (11) 99999-9999
+Nunca prometa preços fixos ou prazos — isso é definido na reunião."""
+
+@app.post("/chat")
+async def chat_widget(body: ChatMsg):
+    """Endpoint para o widget de chat embeddável."""
+    client = anthropic.Anthropic(api_key=API_KEY)
+    messages = []
+    for m in (body.history or [])[-10:]:
+        if isinstance(m, dict) and m.get("role") in ("user", "assistant"):
+            messages.append({"role": m["role"], "content": m["content"]})
+    if not messages or messages[-1].get("role") != "user":
+        messages.append({"role": "user", "content": body.message})
+    elif messages[-1].get("content") != body.message:
+        messages.append({"role": "user", "content": body.message})
+    try:
+        r = client.messages.create(
+            model=MODEL,
+            max_tokens=512,
+            system=CHAT_SYSTEM,
+            messages=messages,
+        )
+        reply = r.content[0].text if r.content else "Desculpe, tente novamente."
+    except Exception as e:
+        reply = "Ops, tive um problema técnico. Fale diretamente no WhatsApp! 💬"
+    return {"reply": reply, "session_id": body.session_id}
+
+class PropostaInput(BaseModel):
+    nome_cliente: str
+    empresa: Optional[str] = ""
+    nicho: str
+    dor_principal: str
+    orcamento: Optional[str] = "a definir"
+    servicos: Optional[str] = ""
+
+@app.post("/gerar-proposta-pdf")
+async def gerar_proposta_pdf(body: PropostaInput):
+    """Gera PDF de proposta comercial com Claude e retorna como download."""
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.colors import HexColor, white, black
+        from reportlab.lib.units import cm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable, Table, TableStyle
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+        import io
+        from fastapi.responses import StreamingResponse
+    except ImportError:
+        raise HTTPException(status_code=500, detail="reportlab não instalado. Execute: pip install reportlab")
+
+    # Gerar conteúdo textual com Claude
+    client = anthropic.Anthropic(api_key=API_KEY)
+    prompt = f"""Crie uma proposta comercial profissional e persuasiva para:
+Cliente: {body.nome_cliente} ({body.empresa})
+Nicho: {body.nicho}
+Dor principal: {body.dor_principal}
+Orçamento: {body.orcamento}
+Serviços de interesse: {body.servicos or 'a definir'}
+
+A proposta deve ter:
+1. Diagnóstico do negócio (2-3 parágrafos sobre a situação e oportunidade)
+2. Nossa solução (serviços específicos para o nicho, com descrição clara)
+3. Resultados esperados (KPIs realistas e timeline)
+4. Investimento (mencione o orçamento de forma consultiva, nunca como limitação)
+5. Próximos passos (CTA para fechar)
+
+Tom: Flávio Augusto — direto, com autoridade, focado em ROI. Seja específico para o nicho {body.nicho}."""
+
+    r = client.messages.create(
+        model=MODEL,
+        max_tokens=1500,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    texto = r.content[0].text
+
+    # Montar PDF
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+        rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
+
+    GOLD = HexColor('#e8c97a')
+    DARK = HexColor('#0f1117')
+    SLATE = HexColor('#94a3b8')
+
+    styles = getSampleStyleSheet()
+    s_title = ParagraphStyle('title', fontSize=22, textColor=GOLD, fontName='Helvetica-Bold',
+        spaceAfter=4, alignment=TA_LEFT)
+    s_sub = ParagraphStyle('sub', fontSize=10, textColor=SLATE, fontName='Helvetica', spaceAfter=20)
+    s_h2 = ParagraphStyle('h2', fontSize=13, textColor=GOLD, fontName='Helvetica-Bold',
+        spaceBefore=16, spaceAfter=8)
+    s_body = ParagraphStyle('body', fontSize=10, textColor=HexColor('#cbd5e1'),
+        fontName='Helvetica', leading=16, spaceAfter=8)
+    s_footer = ParagraphStyle('footer', fontSize=8, textColor=SLATE, fontName='Helvetica',
+        alignment=TA_CENTER)
+
+    from datetime import date
+    story = [
+        Paragraph("VÉRTICE STUDIO", s_title),
+        Paragraph("Proposta Comercial Exclusiva", s_sub),
+        HRFlowable(width="100%", thickness=1, color=GOLD, spaceAfter=16),
+        Paragraph(f"Proposta para: <b>{body.nome_cliente}</b> — {body.empresa or body.nicho}", s_body),
+        Paragraph(f"Data: {date.today().strftime('%d/%m/%Y')} · Válidade: 15 dias", s_body),
+        Spacer(1, 12),
+    ]
+
+    # Parse o texto do Claude em seções
+    for linha in texto.split('\n'):
+        l = linha.strip()
+        if not l:
+            story.append(Spacer(1, 6))
+        elif l.startswith('#') or (l[0].isdigit() and '.' in l[:3]):
+            clean = l.lstrip('#0123456789. ').strip()
+            story.append(Paragraph(clean, s_h2))
+        else:
+            story.append(Paragraph(l, s_body))
+
+    story += [
+        Spacer(1, 20),
+        HRFlowable(width="100%", thickness=1, color=HexColor('#1e293b')),
+        Spacer(1, 8),
+        Paragraph("Vértice Studio · automação com IA para negócios · verticestudio.com.br", s_footer),
+        Paragraph(f"© {date.today().year} Todos os direitos reservados", s_footer),
+    ]
+
+    doc.build(story)
+    buf.seek(0)
+    fname = f"proposta_{body.nome_cliente.replace(' ','_').lower()}.pdf"
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(buf, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+# ── E-mail automation ─────────────────────────────────────────────────────────
+import smtplib
+import email.mime.text
+import email.mime.multipart
+
+SMTP_HOST  = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT  = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER  = os.getenv("SMTP_USER", "")
+SMTP_PASS  = os.getenv("SMTP_PASS", "")
+FROM_EMAIL = os.getenv("FROM_EMAIL", SMTP_USER)
+
+EMAIL_SEQUENCES = {
+    "dia1": {
+        "assunto": "Você sabia que negócios como o seu estão crescendo 3x mais rápido com IA?",
+        "template": """Olá {nome}!
+
+Meu nome é Kaike, fundador da Vértice Studio.
+
+Encontrei seu negócio e acredito que temos algo que pode mudar seus resultados em {nicho}.
+
+A maioria das empresas do seu nicho ainda depende 100% de processo manual para:
+→ Responder leads no WhatsApp
+→ Criar conteúdo e posts
+→ Acompanhar campanhas de tráfego
+
+A Vértice Studio automatiza tudo isso com IA — e nossos clientes têm visto resultados como:
+✅ 40% mais leads qualificados em 30 dias
+✅ 60% de redução no tempo de atendimento
+✅ ROI médio de 3x no primeiro mês
+
+Tenho 20 minutos disponíveis ainda essa semana para te mostrar como isso funcionaria para o seu negócio.
+
+Vale uma conversa?
+
+Att,
+Kaike
+Fundador, Vértice Studio
+"""
+    },
+    "dia3": {
+        "assunto": "Case real: como {nicho} cresceu 47% com automação",
+        "template": """Olá {nome},
+
+Ainda estou pensando no potencial do seu negócio.
+
+Semana passada, um dos nossos clientes no segmento de {nicho} compartilhou um dado incrível:
+
+"Em 30 dias com a Vértice, triplicamos o volume de leads qualificados sem aumentar o orçamento de marketing."
+
+A estratégia foi simples:
+1. Bot WhatsApp que qualifica leads 24/7
+2. Conteúdo automatizado com IA (posts + Reels)
+3. Dashboard de controle em tempo real
+
+O resultado? +47% no faturamento em 45 dias.
+
+Posso montar uma análise rápida do seu negócio — sem compromisso — e te mostrar onde estão as oportunidades escondidas.
+
+Responda esse e-mail com "QUERO VER" e eu te envio a análise em 24h.
+
+Kaike
+Vértice Studio
+"""
+    },
+    "dia7": {
+        "assunto": "Última mensagem — proposta exclusiva para {nome}",
+        "template": """Olá {nome},
+
+Sei que você está ocupado — por isso essa é minha última mensagem.
+
+Quero te fazer uma proposta direta:
+
+Marque uma call de 20 minutos com a equipe Vértice Studio.
+
+Se no final você não ver pelo menos 3 formas claras de como podemos aumentar seu faturamento, eu mesmo te digo que não somos a solução certa pra você.
+
+Simples assim.
+
+→ https://wa.me/5511999999999?text=Quero%20a%20análise%20gratuita
+
+Aproveite enquanto temos vagas disponíveis.
+
+Kaike
+Vértice Studio
+"""
+    }
+}
+
+class EmailSeqInput(BaseModel):
+    nome: str
+    email_destino: str
+    nicho: str
+    sequencia: str = "dia1"  # dia1, dia3, dia7
+
+@app.post("/email/enviar-sequencia")
+async def enviar_sequencia_email(body: EmailSeqInput):
+    """Envia e-mail de sequência de follow-up para leads frios."""
+    if not SMTP_USER or not SMTP_PASS:
+        raise HTTPException(status_code=400, detail="SMTP não configurado. Configure SMTP_USER e SMTP_PASS nas variáveis de ambiente.")
+
+    seq = EMAIL_SEQUENCES.get(body.sequencia)
+    if not seq:
+        raise HTTPException(status_code=400, detail=f"Sequência '{body.sequencia}' não encontrada. Use: dia1, dia3, dia7")
+
+    assunto = seq["assunto"].format(nome=body.nome, nicho=body.nicho)
+    corpo = seq["template"].format(nome=body.nome, nicho=body.nicho)
+
+    msg = email.mime.multipart.MIMEMultipart("alternative")
+    msg["Subject"] = assunto
+    msg["From"]    = f"Vértice Studio <{FROM_EMAIL}>"
+    msg["To"]      = body.email_destino
+
+    # Plain text
+    msg.attach(email.mime.text.MIMEText(corpo, "plain", "utf-8"))
+
+    # HTML version
+    html_corpo = corpo.replace('\n', '<br>').replace('→', '&rarr;')
+    html = f"""<!DOCTYPE html><html><body style="background:#080b10;font-family:Arial,sans-serif;color:#cbd5e1;padding:32px;max-width:600px;margin:0 auto">
+<div style="background:#0f1117;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:32px">
+<div style="background:linear-gradient(135deg,#e8c97a,#c09642);width:36px;height:36px;clip-path:polygon(50% 0%,100% 100%,68% 100%,50% 55%,32% 100%,0% 100%);margin-bottom:24px"></div>
+<div style="color:#94a3b8;font-size:14px;line-height:1.8">{html_corpo}</div>
+<hr style="border:none;border-top:1px solid rgba(255,255,255,.06);margin:24px 0">
+<p style="color:#334155;font-size:12px;text-align:center">© 2026 Vértice Studio · <a href="https://verticestudio.com.br" style="color:#e8c97a">verticestudio.com.br</a></p>
+</div></body></html>"""
+    msg.attach(email.mime.text.MIMEText(html, "html", "utf-8"))
+
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as srv:
+            srv.ehlo()
+            srv.starttls()
+            srv.login(SMTP_USER, SMTP_PASS)
+            srv.sendmail(FROM_EMAIL, body.email_destino, msg.as_string())
+        return {"status": "enviado", "destinatario": body.email_destino, "sequencia": body.sequencia}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao enviar e-mail: {str(e)}")
+
+
+@app.post("/email/follow-up-automatico")
+async def follow_up_email_automatico():
+    """Verifica leads com e-mail no JSON e envia a sequência correta conforme os dias sem contato."""
+    from datetime import datetime, timedelta
+
+    leads_data = carregar_json(LEADS_FILE)
+    enviados = []
+    erros = []
+
+    for lead in leads_data:
+        email_lead = lead.get("email", "")
+        if not email_lead or "@" not in email_lead:
+            continue
+        if lead.get("estagio") in ("fechado", "perdido"):
+            continue
+
+        ultima = lead.get("ultima_interacao", lead.get("criado_em", ""))
+        if not ultima:
+            continue
+        try:
+            dt = datetime.fromisoformat(ultima.replace("Z", "+00:00"))
+            dias = (datetime.now(dt.tzinfo) - dt).days
+        except Exception:
+            continue
+
+        if dias < 1:
+            continue
+        elif dias <= 2:
+            seq = "dia1"
+        elif dias <= 5:
+            seq = "dia3"
+        elif dias <= 10:
+            seq = "dia7"
+        else:
+            continue  # Desistiu
+
+        try:
+            await enviar_sequencia_email(EmailSeqInput(
+                nome=lead.get("nome", "amigo"),
+                email_destino=email_lead,
+                nicho=lead.get("nicho", "seu negócio"),
+                sequencia=seq
+            ))
+            enviados.append({"lead": lead.get("nome"), "seq": seq, "email": email_lead})
+        except Exception as e:
+            erros.append({"lead": lead.get("nome"), "erro": str(e)})
+
+    return {"enviados": len(enviados), "erros": len(erros), "detalhes": enviados}
+
+
 @app.get("/")
 def health():
     return {"status": "online", "bot": "Vértice Studio"}
