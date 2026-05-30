@@ -213,6 +213,7 @@ PERFIS_FILE   = os.getenv("PERFIS_FILE", "perfis.json")
 ESCALAS_FILE  = os.getenv("ESCALAS_FILE", "escalas.json")
 CLIENTES_FILE = os.getenv("CLIENTES_FILE", "clientes.json")
 CONTEUDO_FILE = os.getenv("CONTEUDO_FILE", "conteudo.json")
+CONV_FILE     = os.getenv("CONV_FILE", "conversas.json")
 OWNER_PHONE   = os.getenv("OWNER_PHONE", "")
 
 def _carregar_json(path: str) -> list:
@@ -1500,7 +1501,7 @@ Se no final você não ver pelo menos 3 formas claras de como podemos aumentar s
 
 Simples assim.
 
-→ https://wa.me/5511999999999?text=Quero%20a%20análise%20gratuita
+→ https://wa.me/5512991564645?text=Quero%20a%20análise%20gratuita
 
 Aproveite enquanto temos vagas disponíveis.
 
@@ -2087,6 +2088,59 @@ Fale como dono da agência, não como consultor."""}]
     }
 
 
+# ── Histórico de conversas ────────────────────────────────────────────────────
+
+@app.get("/conversas")
+async def listar_conversas(q: str = ""):
+    convs = _carregar_json(CONV_FILE)
+    convs.sort(key=lambda c: c.get("ultima_atividade", ""), reverse=True)
+    if q:
+        q_low = q.lower()
+        convs = [c for c in convs if q_low in c.get("nome","").lower() or q_low in c.get("telefone","")]
+    return [{"telefone": c["telefone"], "nome": c.get("nome",""), "ultima_atividade": c.get("ultima_atividade",""),
+             "total_mensagens": len(c.get("mensagens",[])), "ultima_msg": c["mensagens"][-1]["text"][:80] if c.get("mensagens") else ""}
+            for c in convs]
+
+@app.get("/conversas/{telefone}")
+async def ver_conversa(telefone: str):
+    convs = _carregar_json(CONV_FILE)
+    conv = next((c for c in convs if c.get("telefone") == telefone), None)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversa não encontrada")
+    return conv
+
+@app.delete("/conversas/{telefone}")
+async def deletar_conversa(telefone: str):
+    convs = _carregar_json(CONV_FILE)
+    convs = [c for c in convs if c.get("telefone") != telefone]
+    _salvar_json(CONV_FILE, convs)
+    return {"status": "deletado"}
+
+
+# ── Backup automático ─────────────────────────────────────────────────────────
+
+@app.get("/backup")
+async def fazer_backup():
+    """Retorna um ZIP com todos os JSONs de dados — para download/backup manual."""
+    import io, zipfile
+    from datetime import datetime
+    from fastapi.responses import StreamingResponse
+
+    buf = io.BytesIO()
+    arquivos = [LEADS_FILE, CLIENTES_FILE, CONTEUDO_FILE, CONV_FILE,
+                REUNIOES_FILE, PERFIS_FILE, "escalas.json"]
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for arq in arquivos:
+            if os.path.exists(arq):
+                zf.write(arq, os.path.basename(arq))
+            else:
+                zf.writestr(os.path.basename(arq), "[]")
+    buf.seek(0)
+    fname = f"vertice_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+    return StreamingResponse(buf, media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
 @app.get("/")
 def health():
     return {"status": "online", "bot": "Vértice Studio"}
@@ -2113,6 +2167,29 @@ async def webhook(request: Request):
     resposta = gerar_resposta(telefone, mensagem)
     enviar_whatsapp(telefone, resposta)
     print(f"🤖 Bot → [{telefone}]: {resposta[:80]}...")
+
+    # Salva conversa no histórico
+    from datetime import datetime
+    convs = _carregar_json(CONV_FILE)
+    # Encontra conversa existente do telefone ou cria nova
+    conv = next((c for c in convs if c.get("telefone") == telefone), None)
+    if not conv:
+        conv = {"telefone": telefone, "nome": "", "mensagens": [], "ultima_atividade": ""}
+        convs.append(conv)
+    # Tenta pegar nome do lead se existir
+    if not conv.get("nome"):
+        leads = _carregar_json(LEADS_FILE)
+        lead = next((l for l in leads if l.get("telefone") == telefone), None)
+        if lead: conv["nome"] = lead.get("nome", "")
+    now = datetime.now().isoformat()
+    conv["mensagens"].append({"role": "user", "text": mensagem, "ts": now})
+    conv["mensagens"].append({"role": "bot", "text": resposta, "ts": now})
+    conv["ultima_atividade"] = now
+    # Limita a 200 mensagens por conversa
+    if len(conv["mensagens"]) > 200:
+        conv["mensagens"] = conv["mensagens"][-200:]
+    _salvar_json(CONV_FILE, convs)
+
     return {"status": "ok"}
 
 def run_server():
